@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-slate-900 text-white;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  }
+}
