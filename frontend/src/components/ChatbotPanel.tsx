@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User } from 'lucide-react';
-import { sendChatMessage } from '../api';
+import { submitFeedback } from '../api';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -31,8 +31,9 @@ export default function ChatbotPanel({ onRefresh }: { onRefresh: () => void }) {
     setBusy(true);
 
     try {
-      const response = await sendChatMessage(userMsg);
-      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      const res = await submitFeedback(userMsg);
+      const reply = res.constraint?.rationale ?? res.action_taken ?? 'Action applied.';
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       onRefresh(); // Refresh the UI to show the new constraint
     } catch (e: any) {
       const errorMsg = e.response?.data?.detail ?? 'Failed to connect to the NLP engine.';

@@ -34,6 +34,8 @@ const DEFAULT_STATE: SimulationState = {
     D: { room_id:'D', temperature_c:25, wall_temperature_c:25, humidity_pct:55, setpoint_c:23, airflow_lps:110, occupancy:10, hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:88, pmv:0.5 },
   },
   building: { total_energy_kwh:0, baseline_energy_kwh:0, current_power_kw:0, average_comfort:88, estimated_cost:0 },
+  rl_mode: 'manual' as const,
+  rl_model_path: null,
 };
 
 export default function App() {
