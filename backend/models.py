@@ -40,6 +40,42 @@ class AirflowRequest(BaseModel):
                                description="Supply airflow [L/s]")
 
 
+class SensorDataRequest(BaseModel):
+    """
+    Hardware sensor override for a single room.
+
+    All fields are Optional — send only the sensors you physically have.
+    On the next simulation step(), the twin will use these real values
+    instead of its simulated estimates for the fields you provide.
+
+    Future integration note:
+      Replace manual POST calls with a hardware bridge (MQTT, Modbus, BACnet)
+      that reads real sensors and calls this endpoint automatically.
+    """
+    temperature_c:      Optional[float] = Field(None, ge=-10.0, le=60.0,
+                                               description="Room air temperature from sensor [°C]")
+    wall_temperature_c: Optional[float] = Field(None, ge=-10.0, le=60.0,
+                                               description="Wall/mass surface temperature [°C]")
+    humidity_pct:       Optional[float] = Field(None, ge=0.0, le=100.0,
+                                               description="Relative humidity from sensor [%]")
+    occupancy:          Optional[int]   = Field(None, ge=0, le=500,
+                                               description="Occupancy count from sensor [persons]")
+    airflow_lps:        Optional[float] = Field(None, ge=0.0, le=1000.0,
+                                               description="Duct airflow from meter [L/s]")
+    hvac_power_kw:      Optional[float] = Field(None, ge=-100.0, le=100.0,
+                                               description="Actual HVAC power from energy meter [kW] (signed)")
+
+
+class OutsideSensorDataRequest(BaseModel):
+    """
+    Hardware sensor override for outdoor/environment conditions.
+    """
+    temperature_c: Optional[float] = Field(None, ge=OUTSIDE_TEMP_MIN, le=OUTSIDE_TEMP_MAX,
+                                          description="Outdoor temperature from weather station [°C]")
+    humidity_pct:  Optional[float] = Field(None, ge=0.0, le=100.0,
+                                          description="Outdoor relative humidity [%]")
+
+
 class OutsideTemperatureRequest(BaseModel):
     temperature_c: float = Field(..., ge=OUTSIDE_TEMP_MIN, le=OUTSIDE_TEMP_MAX,
                                  description="Outdoor air temperature [°C]")
@@ -61,6 +97,20 @@ class SimulationSpeedRequest(BaseModel):
         return v
 
 
+class RLModeRequest(BaseModel):
+    mode: Literal["manual", "auto"] = Field(
+        ..., description="'auto' = RL agent controls HVAC, 'manual' = user controls"
+    )
+    model_path: Optional[str] = Field(
+        None,
+        description="Path to .zip policy file. Required when switching to 'auto'."
+    )
+
+class ChatMessageRequest(BaseModel):
+    message: str = Field(..., description="The user's complaint text")
+
+
+
 # ──────────────────────────────────────────────
 # Response models
 # ──────────────────────────────────────────────
@@ -74,6 +124,7 @@ class RoomStateResponse(BaseModel):
     airflow_lps: float
     occupancy: int
     hvac_power_kw: float          # compressor/heating power [kW]
+    active_constraint: Optional[str] = None
     fan_power_kw: float           # fan power [kW]
     total_power_kw: float         # hvac + fan [kW]
     energy_kwh: float             # accumulated [kWh]
@@ -95,6 +146,8 @@ class SimulationStateResponse(BaseModel):
     speed: int
     outside_temperature_c: float
     electricity_price_per_kwh: float
+    rl_mode: str                          # "manual" | "auto"
+    rl_model_path: Optional[str]          # path of loaded policy, or None
     rooms: Dict[str, RoomStateResponse]
     building: BuildingSummaryResponse
 

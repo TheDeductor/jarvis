@@ -60,3 +60,48 @@ export async function setOutsideTemperature(temperature_c: number) {
 export async function setElectricityPrice(price_per_kwh: number) {
   await api.post('/environment/electricity-price', { price_per_kwh });
 }
+
+// ── Hardware sensor overrides ──────────────────────────────────────────────────
+
+export interface RoomSensorData {
+  temperature_c?:      number;
+  wall_temperature_c?: number;
+  humidity_pct?:       number;
+  occupancy?:          number;
+  airflow_lps?:        number;
+  hvac_power_kw?:      number;
+}
+
+export interface OutsideSensorData {
+  temperature_c?: number;
+  humidity_pct?:  number;
+}
+
+export async function injectRoomSensorData(roomId: string, data: RoomSensorData) {
+  // Strip undefined keys so backend sees only fields we're actually sending
+  const payload = Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v !== undefined && v !== null)
+  );
+  await api.post(`/rooms/${roomId}/sensor-data`, payload);
+}
+
+export async function injectOutsideSensorData(data: OutsideSensorData) {
+  const payload = Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v !== undefined && v !== null)
+  );
+  await api.post('/environment/sensor-data', payload);
+}
+
+// ── RL Auto Mode ───────────────────────────────────────────────────────────────
+
+export async function setRlMode(mode: 'manual' | 'auto', modelPath?: string) {
+  await api.post('/rl/mode', { mode, model_path: modelPath ?? null });
+}
+
+// ── NLP Chat ───────────────────────────────────────────────────────────────────
+
+export async function submitFeedback(complaint: string): Promise<any> {
+  const res = await api.post('/chat/message', { message: complaint });
+  return res.data;
+}
+

@@ -11,10 +11,12 @@ import { fetchState, fetchHistory } from './api';
 import BuildingMap from './components/BuildingMap';
 import SimulationControls from './components/SimulationControls';
 import SelectedRoomPanel from './components/SelectedRoomPanel';
+import SensorOverridePanel from './components/SensorOverridePanel';
 import EnvironmentPanel from './components/EnvironmentPanel';
 import TemperatureChart from './components/TemperatureChart';
 import EnergyChart from './components/EnergyChart';
 import ComfortChart from './components/ComfortChart';
+import NLPChatPanel from './components/NLPChatPanel';
 
 const POLL_INTERVAL_MS = 1000;
 const HISTORY_INTERVAL_MS = 2000;
@@ -40,6 +42,7 @@ export default function App() {
   const [selectedRoom, setSelectedRoom] = useState<RoomId>('B');
   const [backendError, setBackendError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [activeTab, setActiveTab] = useState<'telemetry' | 'sensors'>('telemetry');
 
   const refreshState = useCallback(async () => {
     try {
@@ -123,6 +126,7 @@ export default function App() {
               onSelect={setSelectedRoom}
             />
             <EnvironmentPanel state={state} />
+            <NLPChatPanel onRefresh={refreshState} />
           </div>
 
           {/* Right: controls + selected room */}
@@ -132,13 +136,43 @@ export default function App() {
               speed={state.speed}
               outsideTemp={state.outside_temperature_c}
               electricityPrice={state.electricity_price_per_kwh}
+              rlMode={state.rl_mode || 'manual'}
               onRefresh={refreshState}
             />
             {selectedRoomData && (
-              <SelectedRoomPanel
-                room={selectedRoomData}
-                onRefresh={refreshState}
-              />
+              <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden">
+                {/* Tab bar */}
+                <div className="flex border-b border-white/5">
+                  <button
+                    onClick={() => setActiveTab('telemetry')}
+                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
+                      activeTab === 'telemetry'
+                        ? 'text-sky-400 border-b-2 border-sky-400 bg-sky-500/5'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    📊 Room Detail
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('sensors')}
+                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
+                      activeTab === 'sensors'
+                        ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    ⚡ Sensors
+                  </button>
+                </div>
+                {/* Tab content */}
+                <div className="p-1">
+                  {activeTab === 'telemetry' ? (
+                    <SelectedRoomPanel room={selectedRoomData} onRefresh={refreshState} />
+                  ) : (
+                    <SensorOverridePanel room={selectedRoomData} state={state} onRefresh={refreshState} />
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>

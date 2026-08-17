@@ -3,6 +3,7 @@
 
 export interface RoomState {
   room_id: string;
+  active_constraint?: string;
   temperature_c: number;
   wall_temperature_c: number;  // 2R1C: structural mass temperature [°C]
   humidity_pct: number;
@@ -31,6 +32,8 @@ export interface SimulationState {
   speed: number;
   outside_temperature_c: number;
   electricity_price_per_kwh: number;
+  rl_mode: 'manual' | 'auto';
+  rl_model_path: string | null;
   rooms: Record<string, RoomState>;
   building: BuildingSummary;
 }
@@ -53,3 +56,22 @@ export interface HistoryPoint {
 
 export type RoomId = 'A' | 'B' | 'C' | 'D';
 export type SpeedOption = 1 | 5 | 20;
+
+export interface FeedbackConstraint {
+  room_id: string | null;
+  action: string;
+  urgency: string;
+  setpoint_delta_c: number;
+  rationale: string;
+  confidence: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: Date;
+  constraint?: FeedbackConstraint;
+  action_taken?: string;
+  error?: boolean;
+}

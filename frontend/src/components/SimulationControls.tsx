@@ -1,34 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import type { SpeedOption } from '../types';
-import { Play, Pause, RotateCcw } from 'lucide-react';
+import { Play, Pause, RotateCcw, Bot, User } from 'lucide-react';
 import {
   startSimulation, pauseSimulation, resetSimulation,
   setSpeed, setOutsideTemperature, setElectricityPrice,
+  setRlMode,
 } from '../api';
+
+// Default policy path — points to best model from the test_run training
+const DEFAULT_MODEL_PATH = 'rl/models/test_run/best_model.zip';
 
 interface Props {
   running: boolean;
   speed: number;
   outsideTemp: number;
   electricityPrice: number;
+  rlMode: 'manual' | 'auto';
   onRefresh: () => void;
 }
 
 export default function SimulationControls({
-  running, speed, outsideTemp, electricityPrice, onRefresh,
+  running, speed, outsideTemp, electricityPrice, rlMode, onRefresh,
 }: Props) {
   const [outsideInput, setOutsideInput] = useState(outsideTemp.toFixed(1));
   const [priceInput, setPriceInput] = useState(electricityPrice.toFixed(2));
   const [busy, setBusy] = useState(false);
+  const [rlBusy, setRlBusy] = useState(false);
+  const [rlError, setRlError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Only update from props if not currently focused (prevent overriding while user types)
-    setOutsideInput(outsideTemp.toFixed(1));
-  }, [outsideTemp]);
-
-  useEffect(() => {
-    setPriceInput(electricityPrice.toFixed(2));
-  }, [electricityPrice]);
+  useEffect(() => { setOutsideInput(outsideTemp.toFixed(1)); }, [outsideTemp]);
+  useEffect(() => { setPriceInput(electricityPrice.toFixed(2)); }, [electricityPrice]);
 
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -39,19 +40,35 @@ export default function SimulationControls({
 
   const handleOutsideTemp = async () => {
     const v = parseFloat(outsideInput);
-    if (!isNaN(v) && v >= -10 && v <= 55) {
-      await act(() => setOutsideTemperature(v));
-    }
+    if (!isNaN(v) && v >= -10 && v <= 55) await act(() => setOutsideTemperature(v));
   };
 
   const handlePrice = async () => {
     const v = parseFloat(priceInput);
-    if (!isNaN(v) && v >= 0) {
-      await act(() => setElectricityPrice(v));
+    if (!isNaN(v) && v >= 0) await act(() => setElectricityPrice(v));
+  };
+
+  const handleRlToggle = async (targetMode: 'manual' | 'auto') => {
+    if (targetMode === rlMode) return;
+    setRlBusy(true);
+    setRlError(null);
+    try {
+      if (targetMode === 'auto') {
+        await setRlMode('auto', DEFAULT_MODEL_PATH);
+      } else {
+        await setRlMode('manual');
+      }
+      await onRefresh();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail ?? e?.message ?? 'Failed to switch RL mode';
+      setRlError(msg);
+    } finally {
+      setRlBusy(false);
     }
   };
 
   const speedBtns: SpeedOption[] = [1, 5, 20];
+  const isAuto = rlMode === 'auto';
 
   return (
     <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 space-y-5">
@@ -78,6 +95,48 @@ export default function SimulationControls({
         >
           <RotateCcw size={16} /> Reset
         </button>
+      </div>
+
+      {/* ── RL Auto Mode Toggle ───────────────────────────────────────── */}
+      <div>
+        <p className="text-xs font-medium text-slate-400 mb-2">HVAC Control Mode</p>
+        <div className="flex gap-2">
+          <button
+            disabled={rlBusy || isAuto === false && busy}
+            onClick={() => handleRlToggle('manual')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
+              !isAuto
+                ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
+                : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            <User size={13} /> Manual
+          </button>
+          <button
+            disabled={rlBusy}
+            onClick={() => handleRlToggle('auto')}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
+              isAuto
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            <Bot size={13} /> {rlBusy ? 'Loading…' : 'Auto AI'}
+          </button>
+        </div>
+
+        {/* Active indicator */}
+        {isAuto && (
+          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-widest">
+              RL Agent Active — controlling all rooms
+            </span>
+          </div>
+        )}
+        {rlError && (
+          <p className="mt-1 text-[10px] text-red-400 font-medium">{rlError}</p>
+        )}
       </div>
 
       {/* Speed */}
@@ -139,7 +198,11 @@ export default function SimulationControls({
       <div className="flex items-center gap-2 pt-2">
         <span className={`w-2 h-2 rounded-full ${running ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
         <span className="text-xs text-slate-400 font-medium tracking-wide">
-          {running ? `ENGINE RUNNING AT ${speed}×` : 'ENGINE IDLE'}
+          {running
+            ? isAuto
+              ? `AI AGENT RUNNING AT ${speed}×`
+              : `ENGINE RUNNING AT ${speed}×`
+            : 'ENGINE IDLE'}
         </span>
       </div>
     </div>

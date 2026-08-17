@@ -84,7 +84,7 @@ export default function BuildingMap({ state, selectedRoom, onSelect }: Props) {
           if (Math.abs(deltaT) < 1.0) return null;  // negligible difference
 
           // Arrow from hot to cold room
-          const flowDir = deltaT > 0 ? 1 : -1; // +1 = from→to, -1 = to→from
+          const flowDir = deltaT < 0 ? 1 : -1; // +1 = from→to, -1 = to→from
           const intensity = Math.min(Math.abs(deltaT) / 8, 1); // opacity
 
           let x1, y1, x2, y2;
@@ -165,6 +165,16 @@ export default function BuildingMap({ state, selectedRoom, onSelect }: Props) {
               <text x={x + rw - 16} y={y + rh - 16} textAnchor="end" fill={hvacPct > 0 ? hvacColor : '#94a3b8'} fontSize={11} fontFamily="Inter, sans-serif" fontWeight={hvacPct > 0 ? '600' : '400'}>
                 {hvacPct > 0 ? (isCooling ? 'CLG ' : 'HTG ') : 'IDLE '}{hvacPct}%
               </text>
+              
+              {/* Active Constraint Overlay */}
+              {r.active_constraint && (
+                <rect x={x} y={y} width={rw} height={20} fill="#f59e0b" fillOpacity={0.2} stroke="#f59e0b" strokeWidth={1} rx={6} />
+              )}
+              {r.active_constraint && (
+                <text x={x + rw / 2} y={y + 14} textAnchor="middle" fill="#fcd34d" fontSize={10} fontWeight="700" fontFamily="Inter, sans-serif" letterSpacing="0.5">
+                  ⚠️ {r.active_constraint}
+                </text>
+              )}
 
               {/* Selection indicator */}
               {isSelected && (

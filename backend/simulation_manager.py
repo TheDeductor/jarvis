@@ -19,9 +19,14 @@ SPEED SEMANTICS:
 """
 from __future__ import annotations
 
+import os
+import sys
 import time
 import threading
 from typing import Any, Dict, Optional
+
+# Allow importing rl.agent from the project root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from .digital_twin import BuildingTwin
 
@@ -58,7 +63,17 @@ class SimulationManager:
         self.twin.start_baseline()
 
         self.running = False
-        self.speed: int = 1          # steps-per-tick
+        self.speed: int = 1
+
+        # ── RL Auto Mode ──────────────────────────────────────────────────────
+        self.rl_mode: str = "manual"          # "manual" | "auto"
+        self.rl_model_path: Optional[str] = None
+        self._rl_agent = None                 # JarvisAgent instance (lazy load)
+        
+        # ── NLP Constraints ───────────────────────────────────────────────────
+        self.active_constraints: Dict[str, Optional[Dict[str, Any]]] = {
+            "A": None, "B": None, "C": None, "D": None
+        }
 
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -114,6 +129,17 @@ class SimulationManager:
             state = self.twin.get_state()
             state["running"] = self.running
             state["speed"] = self.speed
+            state["rl_mode"] = self.rl_mode
+            state["rl_model_path"] = self.rl_model_path
+            
+            # Inject constraints into room state for UI
+            current_time = state["simulation_time_minutes"]
+            for rid, constraint in self.active_constraints.items():
+                if constraint and current_time < constraint["expires_at"]:
+                    state["rooms"][rid]["active_constraint"] = f"{constraint['action'].upper()}"
+                else:
+                    self.active_constraints[rid] = None
+                    
             return state
 
     def get_history(self) -> list[Dict[str, Any]]:
@@ -144,6 +170,55 @@ class SimulationManager:
         with self._lock:
             self.twin.set_electricity_price(price)
 
+    def inject_sensor_data(self, room_id: str, data: dict) -> dict:
+        """Thread-safe hardware sensor override for a room."""
+        with self._lock:
+            return self.twin.inject_sensor_data(room_id, data)
+
+    def inject_outside_sensor_data(self, data: dict) -> dict:
+        """Thread-safe hardware sensor override for outdoor environment."""
+        with self._lock:
+            return self.twin.inject_outside_sensor_data(data)
+
+    def set_rl_mode(self, mode: str, model_path: Optional[str] = None) -> None:
+        """
+        Switch between 'manual' and 'auto' (RL agent) control.
+
+        When switching to 'auto', the JarvisAgent is loaded from model_path.
+        The agent then controls setpoints and airflow on every simulation step.
+        Manual user overrides (setpoint, airflow, sensor data) still work —
+        they apply to the twin state before the next agent step.
+        """
+        if mode not in ("manual", "auto"):
+            raise ValueError("mode must be 'manual' or 'auto'")
+
+        with self._lock:
+            if mode == "auto":
+                if model_path is None:
+                    raise ValueError("model_path required when switching to auto mode")
+                if not os.path.exists(model_path) and not os.path.exists(model_path + ".zip"):
+                    raise FileNotFoundError(f"Policy not found: {model_path}")
+                # Lazy-import to avoid loading torch at startup
+                from rl.agent import JarvisAgent
+                self._rl_agent = JarvisAgent(model_path)
+                self.rl_model_path = model_path
+            else:
+                self._rl_agent = None
+                self.rl_model_path = None
+            self.rl_mode = mode
+
+    def set_nlp_constraint(self, room_id: str, action: str, urgency: str, setpoint_delta_c: float, duration_mins: float = 30.0) -> None:
+        """Sets a temporary constraint on a room that overrides the RL agent."""
+        with self._lock:
+            state = self.twin.get_state()
+            expires_at = state["simulation_time_minutes"] + duration_mins
+            self.active_constraints[room_id] = {
+                "action": action,
+                "urgency": urgency,
+                "setpoint_delta_c": setpoint_delta_c,
+                "expires_at": expires_at,
+            }
+
     # ─────────────────────────
     # Internal
     # ─────────────────────────
@@ -155,8 +230,44 @@ class SimulationManager:
 
             with self._lock:
                 if self.running:
-                    steps = self.speed  # speed = steps per tick
+                    steps = self.speed
                     for _ in range(steps):
+                        # ── Auto Mode: let agent set HVAC targets before physics step ──
+                        if self.rl_mode == "auto" and self._rl_agent is not None:
+                            try:
+                                state = self.twin.get_state()
+                                current_sim_time = state["simulation_time_minutes"]
+                                actions = self._rl_agent.get_actions(state)
+                                
+                                for room_id, cmd in actions.items():
+                                    target_sp = cmd["setpoint_c"]
+                                    
+                                    # ── NLP Constraint Clamping ──
+                                    constraint = self.active_constraints.get(room_id)
+                                    if constraint is not None:
+                                        if current_sim_time >= constraint["expires_at"]:
+                                            self.active_constraints[room_id] = None
+                                        else:
+                                            if constraint["action"] == "increase_temp":
+                                                target_sp += constraint["setpoint_delta_c"]
+                                            elif constraint["action"] == "decrease_temp":
+                                                target_sp -= constraint["setpoint_delta_c"]
+                                            elif constraint["action"] == "set_setpoint":
+                                                target_sp = constraint["setpoint_delta_c"]
+                                            elif constraint["action"] == "increase_airflow":
+                                                cmd["airflow_lps"] += constraint["setpoint_delta_c"]
+                                            elif constraint["action"] == "decrease_airflow":
+                                                cmd["airflow_lps"] = max(0, cmd["airflow_lps"] - constraint["setpoint_delta_c"])
+                                                
+                                            target_sp = max(16.0, min(30.0, target_sp))
+                                                
+                                    self.twin.set_setpoint(room_id, target_sp)
+                                    self.twin.set_airflow(room_id, cmd["airflow_lps"])
+                            except Exception as e:
+                                # Never crash the sim loop; log and continue
+                                import sys
+                                print(f"[RL Agent error] {e}", file=sys.stderr)
+
                         self.twin.step()
 
             elapsed = time.monotonic() - start

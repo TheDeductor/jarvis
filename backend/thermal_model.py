@@ -172,13 +172,14 @@ def compute_hvac_power(
     temperature_c: float,
     setpoint_c: float,
     config: RoomConfig,
+    feed_forward: float = 0.0,
 ) -> float:
     """
-    Proportional HVAC controller.
+    Proportional HVAC controller with feed-forward disturbance compensation.
 
     EQUATION:
       error  = T_room − T_setpoint   [K]
-      Q_HVAC = −clip(Kp × error, −Q_max, +Q_max)
+      Q_HVAC = clip(feed_forward − Kp × error, −Q_max, +Q_max)
 
     Sign convention (explicit):
       Positive Q_HVAC → heating   (adds heat to room air)
@@ -187,7 +188,7 @@ def compute_hvac_power(
     Units: [kW]
     """
     error: float = temperature_c - setpoint_c   # positive = too hot
-    raw: float   = -config.hvac_kp * error       # negative when too hot
+    raw: float   = feed_forward - config.hvac_kp * error       # negative when too hot
     return float(np.clip(raw, -config.max_hvac_power_kw, config.max_hvac_power_kw))
 
 
@@ -340,11 +341,14 @@ def compute_next_temperature(
     # Individual heat terms [kW]
     Q_outside  = compute_outside_heat(state.temperature_c, outside_temperature_c, config)
     Q_internal = compute_internal_heat(state.occupancy, config)
-    Q_hvac     = compute_hvac_power(state.temperature_c, state.setpoint_c, config)
     Q_neighbor = compute_neighbor_heat(state.temperature_c, neighbor_temperatures, config)
     Q_vent     = compute_ventilation_heat(
         state.temperature_c, outside_temperature_c, state.airflow_lps, config
     )
+
+    # Feed-forward cancels out steady-state disturbances, letting P-controller perfectly hit the setpoint.
+    feed_forward = -(Q_outside + Q_internal + Q_neighbor + Q_vent)
+    Q_hvac     = compute_hvac_power(state.temperature_c, state.setpoint_c, config, feed_forward)
 
     # Air ↔ mass exchange: flows from hotter node to cooler [kW]
     Q_air_mass: float = (

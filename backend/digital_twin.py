@@ -253,6 +253,82 @@ class BuildingTwin:
     def set_electricity_price(self, price: float) -> None:
         self.electricity_price_per_kwh = max(0.0, float(price))
 
+    def inject_sensor_data(self, room_id: str, data: dict) -> dict:
+        """
+        Override room state with real hardware sensor readings.
+
+        DESIGN INTENT:
+          In simulation mode: all state values are computed by physics.
+          In hardware mode:   real sensors push values here each second.
+                              Physics still runs normally on the NEXT step(),
+                              but starts from the real measured values
+                              instead of the simulated ones.
+
+        Only fields present in `data` (not None) are overwritten.
+        Fields not provided keep their last simulated value — so you
+        can start with just a temperature sensor and add more over time.
+
+        Returns a dict of which fields were updated and their new values.
+        """
+        self._require_room(room_id)
+        state = self._states[room_id]
+        cfg   = self._configs[room_id]
+        updated: dict = {}
+
+        if data.get("temperature_c") is not None:
+            state.temperature_c = float(data["temperature_c"])
+            updated["temperature_c"] = state.temperature_c
+
+        if data.get("wall_temperature_c") is not None:
+            state.wall_temperature_c = float(data["wall_temperature_c"])
+            updated["wall_temperature_c"] = state.wall_temperature_c
+
+        if data.get("humidity_pct") is not None:
+            state.humidity_pct = float(np.clip(data["humidity_pct"], 0.0, 100.0))
+            updated["humidity_pct"] = state.humidity_pct
+
+        if data.get("occupancy") is not None:
+            state.occupancy = max(0, int(data["occupancy"]))
+            updated["occupancy"] = state.occupancy
+
+        if data.get("airflow_lps") is not None:
+            state.airflow_lps = clamp_airflow(float(data["airflow_lps"]), cfg)
+            updated["airflow_lps"] = state.airflow_lps
+
+        if data.get("hvac_power_kw") is not None:
+            # When a real energy meter provides HVAC power, trust it directly.
+            # The physics model still computes its own estimate next step —
+            # this is a one-shot override for the current snapshot.
+            state.hvac_power_kw = float(data["hvac_power_kw"])
+            updated["hvac_power_kw"] = state.hvac_power_kw
+
+        return updated
+
+    def inject_outside_sensor_data(self, data: dict) -> dict:
+        """
+        Override outdoor environment with real weather station data.
+
+        Disables diurnal/stochastic weather generation for the fields provided.
+        """
+        updated: dict = {}
+
+        if data.get("temperature_c") is not None:
+            self.outside_temperature_c = float(data["temperature_c"])
+            self.use_diurnal_weather   = False
+            self.use_stochastic_weather = False
+            if self._baseline_twin:
+                self._baseline_twin.outside_temperature_c = float(data["temperature_c"])
+                self._baseline_twin.use_diurnal_weather   = False
+                self._baseline_twin.use_stochastic_weather = False
+            updated["temperature_c"] = self.outside_temperature_c
+
+        # outdoor humidity is stored for future use / display; not yet
+        # consumed by the 2R1C thermal model (which uses temperature only).
+        if data.get("humidity_pct") is not None:
+            updated["humidity_pct"] = float(data["humidity_pct"])  # logged only
+
+        return updated
+
     # ─────────────────────────
     # Simulation control
     # ─────────────────────────
