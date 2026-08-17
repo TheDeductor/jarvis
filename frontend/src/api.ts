@@ -3,7 +3,7 @@
 import axios from 'axios';
 import type { HistoryPoint, SimulationState } from './types';
 
-const BASE_URL = 'http://localhost:8000/api';
+const BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
 
 const api = axios.create({ baseURL: BASE_URL, timeout: 5000 });
 

@@ -14,7 +14,7 @@ from typing import Any, Dict
 from groq import Groq
 
 # Hardcoded for the hackathon as requested
-_client = Groq(api_key=os.getenv("GROQ_API_KEY", "your-fallback-key"))
+_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 
 MODEL = "openai/gpt-oss-120b"
 
@@ -108,18 +108,30 @@ def parse_complaint(complaint: str, state: Dict[str, Any]) -> Dict[str, Any]:
     system_prompt = _SYSTEM_TEMPLATE.format(room_context=room_context)
     user_message = _USER_TEMPLATE.format(complaint=complaint)
 
-    response = _client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=0.3,          # low temperature for consistent structured output
-        max_completion_tokens=512,
-        top_p=1,
-        stream=False,
-        stop=None,
-    )
+    try:
+        response = _client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=1,
+            max_completion_tokens=1024,
+            top_p=1,
+            reasoning_effort="medium",
+            stream=False,
+            stop=None,
+        )
+    except Exception as groq_err:
+        # API key invalid, quota exceeded, network error, etc.
+        return {
+            "room_id": None,
+            "action": "none",
+            "urgency": "low",
+            "setpoint_delta_c": 0.0,
+            "rationale": f"AI backend error: {groq_err}",
+            "confidence": 0.0,
+        }
 
     raw = response.choices[0].message.content or ""
 
