@@ -10,9 +10,6 @@ import {
 // Default policy path — points to best model from the test_run training
 const DEFAULT_MODEL_PATH = 'rl/models/test_run/best_model.zip';
 
-// In cloud deployments the model zip isn't shipped — detect via env var.
-// Set VITE_RL_ENABLED=true in your hosting platform only if you upload the model.
-const RL_ENABLED = import.meta.env.VITE_RL_ENABLED === 'true';
 
 interface Props {
   running: boolean;
@@ -117,18 +114,15 @@ export default function SimulationControls({
             <User size={13} /> Manual
           </button>
           <button
-            disabled={rlBusy || !RL_ENABLED}
-            title={RL_ENABLED ? 'Switch to RL auto control' : 'RL model not deployed — run locally to use Auto AI'}
+            disabled={rlBusy}
             onClick={() => handleRlToggle('auto')}
             className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
               isAuto
                 ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
-                : RL_ENABLED
-                ? 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600'
-                : 'bg-slate-800/30 border-slate-800 text-slate-700 cursor-not-allowed'
+                : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600'
             }`}
           >
-            <Bot size={13} /> {rlBusy ? 'Loading…' : RL_ENABLED ? 'Auto AI' : 'Auto AI 🔒'}
+            <Bot size={13} /> {rlBusy ? 'Loading…' : 'Auto AI'}
           </button>
         </div>
 

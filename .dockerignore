@@ -6,7 +6,9 @@
 frontend/node_modules
 frontend/dist
 
-rl/models
+rl/agent.py
+rl/train.py
+rl/env
 slides
 
 .git
