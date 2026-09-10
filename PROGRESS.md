@@ -5,8 +5,8 @@ Rule: one phase per session. After each phase: tests → update this file → co
 
 | Phase | Title | Status | Gate |
 |---|---|---|---|
-| P0 | Setup & recon | DONE | awaiting user approval for P1 |
-| P1 | Scaffold + static 3D scene | NOT STARTED | — |
+| P0 | Setup & recon | DONE | approved → P1 executed |
+| P1 | Scaffold + static 3D scene | DONE | awaiting user approval for P2 |
 | P2 | CO2 / IAQ backend | NOT STARTED | — |
 | P3 | Furniture & people assets | NOT STARTED | — |
 | P4 | Live data → visual wiring | NOT STARTED | — |
@@ -78,7 +78,7 @@ Koyeb/Render; frontend on Netlify (SPA fallback). `.env` is gitignored; `.env.ex
 ## Phase 0 — Setup & recon
 
 **Status:** DONE
-**GATE:** awaiting user approval for P1
+**GATE:** approved — P1 executed in the next session.
 
 **Files touched**
 - `MASTER_PROMPT_3D.md` (NEW) — master prompt, verbatim.
@@ -112,3 +112,99 @@ Koyeb/Render; frontend on Netlify (SPA fallback). `.env` is gitignored; `.env.ex
 - No `backend/` or `rl/` edits → PASS (git status shows docs only)
 
 **Commit:** `docs: add 3D build master prompt, phase plan, and progress log`
+
+---
+
+## Phase 1 — Scaffold + static 3D scene
+
+**Status:** DONE
+**GATE:** awaiting user approval for P2
+
+**Files touched**
+- `frontend/package.json` — added the four pinned 3D deps; pinned `react`/`react-dom` to exact `19.2.8`.
+- `frontend/package-lock.json` — regenerated.
+- `frontend/src/components/BuildingScene3D.tsx` (NEW) — `<Canvas>`, four room volumes in the 2×2 grid
+  (A|B top, C|D bottom), low outer walls, interior glass partitions, one ambient + one directional
+  light, `OrbitControls`, drei `Grid` ground plane, per-room labels.
+- `frontend/src/App.tsx` — `viewMode: '2d' | '3d'` state + segmented toggle above the building view;
+  renders `BuildingMap` or `BuildingScene3D` with identical props.
+
+**Dependencies added (§6 requires justification + pin)**
+
+| Package | Pin | Justification |
+|---|---|---|
+| `three` | `0.185.1` | The 3D engine. Pinned to exactly match `@types/three` so runtime and types share a minor — `three@0.185.4` does not exist (only the types package goes to `.4`). |
+| `@react-three/fiber` | `9.7.0` | React renderer for three. v9 is the React-19 line; peer range is `react >=19 <19.3`. |
+| `@react-three/drei` | `10.7.8` | Supplies `OrbitControls`, `Html`, `Grid`, `useCursor`. Peer requires R3F ^9 and three >=0.159. |
+| `@types/three` | `0.185.1` (dev) | Types for three, matched to the runtime minor. |
+
+All four installed with `--save-exact` (no caret), per §6 "pin versions".
+
+**Version constraints hit + resolutions (the P1 risk the plan flagged)**
+
+1. `react`/`react-dom` were declared `^19.2.8`, which npm resolves to **19.3.0** — rejected by R3F
+   9.7.0 (`peer react >=19 <19.3`). R3F 9.7.0 is the newest fibre on the registry; no 19.3-compatible
+   release exists. → **Pinned `react` and `react-dom` to exact `19.2.8`**, which is the version already
+   installed on disk, so the runtime behaviour is unchanged and 3D-dep-free pages are unaffected.
+   `docs/PHASES.md` anticipated an R3F/React-19 pinning adjustment in P1. **Deliberate deviation from
+   the `^` ranges used elsewhere in `package.json`.**
+2. `three@0.185.4` does not exist (I initially mis-read the `@types/three` version list). →
+   `three@0.185.1` + `@types/three@0.185.1`, an exact pair.
+3. Verified after install: the whole tree dedupes to a single `three@0.185.1` and `react@19.2.8`, and
+   `npm ls` reports no peer conflicts. `xr`/`stats-gl` pull their own nested `three@0.170.0` — vendored
+   inside drei, not on our import path.
+
+**Environment gotcha (this one cost me a build)**
+This machine's shell has `NODE_ENV=production` and `npm config omit=dev`, so a bare `npm install`
+**prunes every devDependency** — `vite`, `typescript`, `tailwindcss`, `oxlint` and all `@types/*`
+disappeared, and `npm run build` then failed with `'tsc' is not recognized`. Fix:
+`npm install --include=dev`. Worth knowing before P2 adds `backend/requirements-dev.txt`.
+
+**Decisions / deviations**
+- `viewMode` **defaults to `'2d'`**. The 3D scene still renders hardcoded placeholders, so making it the
+  default would present invented temperatures as real readings. Flip the default to `'3d'` in P4 once
+  the scene is wired to live state (DoD: "3D scene replaces 2D map, toggle keeps 2D fallback").
+- `BuildingScene3D` takes **the same props as `BuildingMap`** (`state`, `selectedRoom`, `onSelect`) so
+  the toggle is a drop-in swap and P4 is a data change, not an interface change. `state` is **typed but
+  deliberately not read** in P1 — reading it is exactly P4's "live wiring". Per-room floors are tinted
+  from `PLACEHOLDER_TEMP_C` through the existing `temperatureToColor()` util: a CSS `hsl()` string
+  parses straight into `THREE.Color`, so P4 needs **no duplicated colour maths** — the 2D palette and
+  the 3D tint stay one implementation.
+- Click-to-select and the hover cursor are wired now rather than deferred to P9. Rationale: `BuildingMap`
+  already answers clicks, and a 3D view that ignored them while the 2D view honoured them is a UX
+  inconsistency, not a feature. P9 still owns polish + offline rehearsal.
+- Room labels use drei `<Html>` (real DOM, app typography) instead of drei `<Text>`: troika's `<Text>`
+  fetches a default font from a CDN, which would violate "zero internet dependency in simulated mode".
+- No drei `Environment`/HDR preset, same reason. Lighting is exactly one `ambientLight` + one
+  `directionalLight` (1024² shadow map), per §3.6, and there is no postprocessing.
+- `frameloop` stays default (`always`) because `OrbitControls` damping needs continuous frames.
+- Perf guards already in: `dpr={[1, 2]}`, `enablePan={false}`, bounded zoom/polar angle, `EdgesGeometry`
+  outlines instead of extra meshes.
+
+**Known item carried to P9 (not a P1 acceptance criterion)**
+- `three` + `drei` grow the production bundle from ~0.5 MB to **1,565.96 kB (439.66 kB gzip)**; vite
+  warns about the >500 kB chunk. Cleanest fix is `React.lazy`-ing `BuildingScene3D` so the 2D fallback
+  never downloads three. Deliberately not done in P1.
+
+**Tests run + result**
+- `npm run build` (`tsc -b && vite build`) → **PASS** — 2981 modules transformed, no type errors.
+- `npm run lint` (`oxlint`) → **0 errors, 6 warnings**, all pre-existing (unused `HvacBar`, unused
+  `useRef` import, unused catch binding in `App.tsx`). `BuildingScene3D.tsx` produces **no** warnings.
+- Backend: `py -3 -m uvicorn backend.main:app --port 8000` → `GET /api/simulation/state` returns **200**.
+  Note there is **no venv in the repo** and `python` resolves to the Windows Store stub — use `py -3`
+  (3.13.5), which has fastapi/uvicorn/numpy.
+- Frontend dev server: `npm run dev` on :3000 returns **200**; `GET /src/components/BuildingScene3D.tsx`
+  returns a 23.7 kB transformed module with drei resolved and no Vite error overlay.
+- Protected files: **no `backend/` or `rl/` edits** — `git status` shows only `frontend/` changes.
+  `docs/`, `MASTER_PROMPT_3D.md` untouched.
+
+**Acceptance criteria**
+- `npm run dev` toggles 2D/3D → **PASS on code + build**; ⚠️ **browser render NOT verified by the agent.**
+  `agent-browser` is not installed on this machine and the user opted to verify manually. Open
+  http://localhost:3000 and click **3D Twin**. Residual risk: a React-19/R3F runtime error or a blank
+  canvas — neither is catchable by `tsc`/vite, and both are the exact class of failure P1 exists to
+  flush out. Everything else (server, module graph, production build) is green.
+- `npm run build` (tsc) passes → **PASS**
+- Deps pinned + justified → **PASS** (table above)
+
+**Commit:** `feat(fe): add 2D/3D view toggle and static 3D building scene`

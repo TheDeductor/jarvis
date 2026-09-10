@@ -9,6 +9,7 @@ import type { SimulationState, HistoryPoint, RoomId } from './types';
 import { fetchState, fetchHistory } from './api';
 
 import BuildingMap from './components/BuildingMap';
+import BuildingScene3D from './components/BuildingScene3D';
 import SimulationControls from './components/SimulationControls';
 import SelectedRoomPanel from './components/SelectedRoomPanel';
 import SensorOverridePanel from './components/SensorOverridePanel';
@@ -45,6 +46,7 @@ export default function App() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'sensors'>('telemetry');
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
 
   const refreshState = useCallback(async () => {
     try {
@@ -120,13 +122,43 @@ export default function App() {
       <main className="max-w-screen-2xl mx-auto px-6 py-6 space-y-6">
         {/* Top: building map + controls */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
-          {/* Left: map + environment */}
+          {/* Left: building view + environment */}
           <div className="space-y-4">
-            <BuildingMap
-              state={state}
-              selectedRoom={selectedRoom}
-              onSelect={setSelectedRoom}
-            />
+            <div>
+              <div className="flex items-center justify-between px-1 pb-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                  Building View
+                </span>
+                <div className="flex items-center gap-0.5 rounded-lg border border-slate-700/60 bg-slate-800/40 p-0.5">
+                  {(['2d', '3d'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={`rounded-md px-3 py-1 text-[11px] font-bold uppercase tracking-widest transition-colors ${
+                        viewMode === mode
+                          ? 'bg-sky-500/20 text-sky-300'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      {mode === '2d' ? '2D Map' : '3D Twin'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {viewMode === '2d' ? (
+                <BuildingMap
+                  state={state}
+                  selectedRoom={selectedRoom}
+                  onSelect={setSelectedRoom}
+                />
+              ) : (
+                <BuildingScene3D
+                  state={state}
+                  selectedRoom={selectedRoom}
+                  onSelect={setSelectedRoom}
+                />
+              )}
+            </div>
             <EnvironmentPanel state={state} />
             <NLPChatPanel onRefresh={refreshState} />
           </div>
