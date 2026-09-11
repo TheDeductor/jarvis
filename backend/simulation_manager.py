@@ -29,9 +29,17 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from .digital_twin import BuildingTwin
+from .models import AIRFLOW_MAX_LPS, AIRFLOW_MIN_LPS, SETPOINT_MAX, SETPOINT_MIN
+from .thermal_model import airflow_to_hold_co2
 
 
 VALID_SPEEDS = {1, 5, 20}
+
+# ── IAQ rule (MASTER_PROMPT_3D §2.1) ─────────────────────────────────────────
+IAQ_TRIGGER_PPM: float = 1000.0            # above this, the room asks for more air
+IAQ_TARGET_PPM: float = 900.0              # airflow sized to hold the room below this
+IAQ_CONSTRAINT_DURATION_MINS: float = 30.0
+IAQ_MIN_AIRFLOW_DELTA_LPS: float = 30.0    # floor so the response is always visible
 
 
 class SimulationManager:
@@ -75,6 +83,15 @@ class SimulationManager:
             "A": None, "B": None, "C": None, "D": None
         }
 
+        # ── Manual-mode base targets ──────────────────────────────────────────
+        # The user's requested setpoint/airflow BEFORE deterministic overlays
+        # (NLP / IAQ / price rules) are layered on top. Overlays never mutate
+        # the base, so removing a constraint restores the user's intent.
+        self._base_setpoints: Dict[str, float] = {}
+        self._base_airflow:   Dict[str, float] = {}
+        self._overlay_active: set[str] = set()
+        self._sync_base_targets()
+
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
@@ -108,6 +125,10 @@ class SimulationManager:
 
         with self._lock:
             self.twin.reset()
+            for room_id in self.active_constraints:
+                self.active_constraints[room_id] = None
+            self._overlay_active.clear()
+            self._sync_base_targets()
             self._stop_event.clear()
             if was_running:
                 self.running = True
@@ -133,13 +154,11 @@ class SimulationManager:
             state["rl_model_path"] = self.rl_model_path
             
             # Inject constraints into room state for UI
-            current_time = state["simulation_time_minutes"]
+            self._expire_constraints(state["simulation_time_minutes"])
             for rid, constraint in self.active_constraints.items():
-                if constraint and current_time < constraint["expires_at"]:
-                    state["rooms"][rid]["active_constraint"] = f"{constraint['action'].upper()}"
-                else:
-                    self.active_constraints[rid] = None
-                    
+                if constraint is not None:
+                    state["rooms"][rid]["active_constraint"] = constraint["action"].upper()
+
             return state
 
     def get_history(self) -> list[Dict[str, Any]]:
@@ -153,6 +172,7 @@ class SimulationManager:
     def set_setpoint(self, room_id: str, setpoint_c: float) -> None:
         with self._lock:
             self.twin.set_setpoint(room_id, setpoint_c)
+            self._base_setpoints[room_id] = max(SETPOINT_MIN, min(SETPOINT_MAX, float(setpoint_c)))
 
     def set_occupancy(self, room_id: str, occupancy: int) -> None:
         with self._lock:
@@ -161,6 +181,7 @@ class SimulationManager:
     def set_airflow(self, room_id: str, airflow_lps: float) -> None:
         with self._lock:
             self.twin.set_airflow(room_id, airflow_lps)
+            self._base_airflow[room_id] = max(AIRFLOW_MIN_LPS, min(AIRFLOW_MAX_LPS, float(airflow_lps)))
 
     def set_outside_temperature(self, temp_c: float) -> None:
         with self._lock:
@@ -205,19 +226,65 @@ class SimulationManager:
             else:
                 self._rl_agent = None
                 self.rl_model_path = None
+                self._overlay_active.clear()
+                # Adopt the current (agent-controlled) targets as the new manual
+                # base, except in rooms an active constraint is still driving.
+                for room_id, constraint in self.active_constraints.items():
+                    if constraint is None:
+                        _config, room = self.twin.get_room(room_id)
+                        self._base_setpoints[room_id] = room.setpoint_c
+                        self._base_airflow[room_id] = room.airflow_lps
             self.rl_mode = mode
 
-    def set_nlp_constraint(self, room_id: str, action: str, urgency: str, setpoint_delta_c: float, duration_mins: float = 30.0) -> None:
+    def set_nlp_constraint(
+        self,
+        room_id: str,
+        action: str,
+        urgency: str,
+        setpoint_delta_c: float,
+        duration_mins: float = 30.0,
+        source: str = "nlp",
+    ) -> None:
         """Sets a temporary constraint on a room that overrides the RL agent."""
         with self._lock:
-            state = self.twin.get_state()
-            expires_at = state["simulation_time_minutes"] + duration_mins
-            self.active_constraints[room_id] = {
-                "action": action,
-                "urgency": urgency,
-                "setpoint_delta_c": setpoint_delta_c,
-                "expires_at": expires_at,
-            }
+            self._set_constraint(room_id, action, urgency, setpoint_delta_c, duration_mins, source)
+
+    def _set_constraint(
+        self,
+        room_id: str,
+        action: str,
+        urgency: str,
+        setpoint_delta_c: float,
+        duration_mins: float,
+        source: str = "nlp",
+    ) -> None:
+        """
+        Write a constraint into the active table. Caller must hold self._lock.
+
+        `source` records where the constraint came from: "nlp" (occupant
+        complaint), "iaq_rule" (automatic CO2 response), "price_response" (P6).
+        """
+        sim_time = self.twin.simulation_time_minutes
+        self.active_constraints[room_id] = {
+            "action":           action,
+            "urgency":          urgency,
+            "setpoint_delta_c": setpoint_delta_c,
+            "expires_at":       sim_time + duration_mins,
+            "source":           source,
+        }
+
+    def _expire_constraints(self, sim_time: float) -> None:
+        """Null out constraints past their expiry. Caller must hold self._lock."""
+        for room_id, constraint in self.active_constraints.items():
+            if constraint is not None and sim_time >= constraint["expires_at"]:
+                self.active_constraints[room_id] = None
+
+    def _sync_base_targets(self) -> None:
+        """Re-read the user-facing base targets from the twin. Caller must hold self._lock."""
+        for room_id in self.active_constraints:
+            _config, room = self.twin.get_room(room_id)
+            self._base_setpoints[room_id] = room.setpoint_c
+            self._base_airflow[room_id] = room.airflow_lps
 
     # ─────────────────────────
     # Internal
@@ -230,46 +297,132 @@ class SimulationManager:
 
             with self._lock:
                 if self.running:
-                    steps = self.speed
-                    for _ in range(steps):
-                        # ── Auto Mode: let agent set HVAC targets before physics step ──
-                        if self.rl_mode == "auto" and self._rl_agent is not None:
-                            try:
-                                state = self.twin.get_state()
-                                current_sim_time = state["simulation_time_minutes"]
-                                actions = self._rl_agent.get_actions(state)
-                                
-                                for room_id, cmd in actions.items():
-                                    target_sp = cmd["setpoint_c"]
-                                    
-                                    # ── NLP Constraint Clamping ──
-                                    constraint = self.active_constraints.get(room_id)
-                                    if constraint is not None:
-                                        if current_sim_time >= constraint["expires_at"]:
-                                            self.active_constraints[room_id] = None
-                                        else:
-                                            if constraint["action"] == "increase_temp":
-                                                target_sp += constraint["setpoint_delta_c"]
-                                            elif constraint["action"] == "decrease_temp":
-                                                target_sp -= constraint["setpoint_delta_c"]
-                                            elif constraint["action"] == "set_setpoint":
-                                                target_sp = constraint["setpoint_delta_c"]
-                                            elif constraint["action"] == "increase_airflow":
-                                                cmd["airflow_lps"] += constraint["setpoint_delta_c"]
-                                            elif constraint["action"] == "decrease_airflow":
-                                                cmd["airflow_lps"] = max(0, cmd["airflow_lps"] - constraint["setpoint_delta_c"])
-                                                
-                                            target_sp = max(16.0, min(30.0, target_sp))
-                                                
-                                    self.twin.set_setpoint(room_id, target_sp)
-                                    self.twin.set_airflow(room_id, cmd["airflow_lps"])
-                            except Exception as e:
-                                # Never crash the sim loop; log and continue
-                                import sys
-                                print(f"[RL Agent error] {e}", file=sys.stderr)
-
-                        self.twin.step()
+                    for _ in range(self.speed):
+                        self._step_once()
 
             elapsed = time.monotonic() - start
             sleep_time = max(0.0, self.tick_interval - elapsed)
             self._stop_event.wait(timeout=sleep_time)
+
+    def _step_once(self) -> None:
+        """
+        Advance the simulation exactly one step.
+
+        Caller must hold self._lock. Order:
+          1. Expire constraints whose expiry time has passed.
+          2. Apply control targets — the RL agent's command in auto mode, the
+             user's base target in manual mode — with deterministic overlays
+             (NLP / IAQ / price response) layered on top.
+          3. Advance the physics one step.
+          4. Evaluate the IAQ rule against the fresh state.
+        """
+        sim_time = self.twin.simulation_time_minutes
+        self._expire_constraints(sim_time)
+
+        if self.rl_mode == "auto" and self._rl_agent is not None:
+            try:
+                state = self.twin.get_state()
+                actions = self._rl_agent.get_actions(state)
+
+                for room_id, cmd in actions.items():
+                    setpoint_c, airflow_lps = self._apply_overlays(
+                        room_id, cmd["setpoint_c"], cmd["airflow_lps"], sim_time
+                    )
+                    self.twin.set_setpoint(room_id, setpoint_c)
+                    self.twin.set_airflow(room_id, airflow_lps)
+            except Exception as e:
+                # Never crash the sim loop; log and continue
+                print(f"[RL Agent error] {e}", file=sys.stderr)
+        else:
+            for room_id, constraint in self.active_constraints.items():
+                if constraint is not None:
+                    setpoint_c, airflow_lps = self._apply_overlays(
+                        room_id,
+                        self._base_setpoints[room_id],
+                        self._base_airflow[room_id],
+                        sim_time,
+                    )
+                    self.twin.set_setpoint(room_id, setpoint_c)
+                    self.twin.set_airflow(room_id, airflow_lps)
+                    self._overlay_active.add(room_id)
+                elif room_id in self._overlay_active:
+                    # Constraint finished — hand control back to the manual base
+                    self.twin.set_setpoint(room_id, self._base_setpoints[room_id])
+                    self.twin.set_airflow(room_id, self._base_airflow[room_id])
+                    self._overlay_active.discard(room_id)
+
+        self.twin.step()
+        self._apply_iaq_rule()
+
+    def _apply_overlays(
+        self,
+        room_id: str,
+        base_setpoint_c: float,
+        base_airflow_lps: float,
+        sim_time: float,
+    ) -> tuple[float, float]:
+        """
+        Layer the room's active constraint on top of a base control target.
+
+        The base target is the RL agent's command in auto mode and the user's
+        base setpoint/airflow in manual mode. Overlays are deterministic and
+        never mutate the base, so an expiring constraint simply restores the
+        target underneath it. Shared by both modes (docs/PHASES.md P2 decision).
+
+        Returns (setpoint_c, airflow_lps) after the overlay.
+        """
+        constraint = self.active_constraints.get(room_id)
+        if constraint is None or sim_time >= constraint["expires_at"]:
+            return base_setpoint_c, base_airflow_lps
+
+        action = constraint["action"]
+        delta  = constraint["setpoint_delta_c"]
+
+        setpoint_c  = base_setpoint_c
+        airflow_lps = base_airflow_lps
+
+        if action == "increase_temp":
+            setpoint_c += delta
+        elif action == "decrease_temp":
+            setpoint_c -= delta
+        elif action == "set_setpoint":
+            setpoint_c = delta
+        elif action == "increase_airflow":
+            airflow_lps += delta
+        elif action == "decrease_airflow":
+            airflow_lps -= delta
+
+        setpoint_c  = max(SETPOINT_MIN, min(SETPOINT_MAX, setpoint_c))
+        airflow_lps = max(AIRFLOW_MIN_LPS, min(AIRFLOW_MAX_LPS, airflow_lps))
+
+        return setpoint_c, airflow_lps
+
+    def _apply_iaq_rule(self) -> None:
+        """
+        Rule-based IAQ response: a stuffy, uncontrolled room asks for more air.
+
+        Trigger : room CO2 > IAQ_TRIGGER_PPM and no active constraint on the room.
+        Action  : the existing `increase_airflow` constraint path (same clamp and
+                  expiry code as NLP complaints), sized to hold the room at
+                  IAQ_TARGET_PPM for its current occupancy.
+
+        Caller must hold self._lock.
+        """
+        for room_id in self.active_constraints:
+            if self.active_constraints[room_id] is not None:
+                continue
+
+            _config, room = self.twin.get_room(room_id)
+            if room.co2_ppm <= IAQ_TRIGGER_PPM:
+                continue
+
+            target_airflow = airflow_to_hold_co2(room.occupancy, IAQ_TARGET_PPM)
+            delta = max(IAQ_MIN_AIRFLOW_DELTA_LPS, target_airflow - room.airflow_lps)
+            self._set_constraint(
+                room_id          = room_id,
+                action           = "increase_airflow",
+                urgency          = "high",
+                setpoint_delta_c = delta,
+                duration_mins    = IAQ_CONSTRAINT_DURATION_MINS,
+                source           = "iaq_rule",
+            )

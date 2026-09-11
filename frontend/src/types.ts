@@ -16,6 +16,9 @@ export interface RoomState {
   energy_kwh: number;
   comfort_score: number;
   pmv: number;                 // Fanger PMV: -3 (cold) to +3 (hot)
+  co2_ppm: number;             // indoor CO2 concentration [ppm]
+  iaq_score: number;           // 0-100 IAQ sub-score (CO2-based)
+  overall_comfort_score: number; // 0-100 blend: 0.7*comfort + 0.3*IAQ
 }
 
 export interface BuildingSummary {
@@ -49,6 +52,7 @@ export interface HistoryPoint {
     energy_kwh: number;
     hvac_power_kw: number;
     humidity_pct: number;
+    co2_ppm: number;
   }>;
   total_energy_kwh: number;
   baseline_energy_kwh: number;

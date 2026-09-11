@@ -130,6 +130,9 @@ class RoomStateResponse(BaseModel):
     energy_kwh: float             # accumulated [kWh]
     comfort_score: float          # 0–100  (100 − PPD)
     pmv: float                    # Fanger PMV [-3, +3]
+    co2_ppm: float                # indoor CO2 concentration [ppm]
+    iaq_score: float              # 0–100 IAQ sub-score (CO2-based)
+    overall_comfort_score: float  # 0–100 blend: 0.7·comfort + 0.3·IAQ
 
 
 class BuildingSummaryResponse(BaseModel):

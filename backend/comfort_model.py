@@ -257,3 +257,59 @@ def comfort_label(comfort_score: float) -> str:
         return "Poor"
     else:
         return "Very Poor"
+
+
+# ---------------------------------------------------------------------------
+# Indoor Air Quality (CO2)
+# ---------------------------------------------------------------------------
+
+# Piecewise-linear IAQ mapping thresholds [ppm]. Simulation assumptions.
+IAQ_CO2_GOOD_PPM: float = 800.0    # score 100 at or below this concentration
+IAQ_CO2_BAD_PPM: float = 2000.0    # score 0 at or above this concentration
+
+
+def iaq_score(co2_ppm: float) -> float:
+    """
+    Map indoor CO2 concentration to a 0–100 indoor-air-quality score.
+
+    MAPPING (piecewise linear — simulation assumption):
+      100  at CO2 ≤ 800 ppm
+        0  at CO2 ≥ 2000 ppm
+      linear interpolation between
+
+    Thresholds are motivated by typical ventilation guidelines but are
+    simplified; this is NOT a certification-grade IAQ assessment.
+
+    Parameters
+    ----------
+    co2_ppm : Indoor CO2 concentration [ppm].
+
+    Returns
+    -------
+    float : IAQ score [0, 100]. Higher is better.
+    """
+    span_ppm = IAQ_CO2_BAD_PPM - IAQ_CO2_GOOD_PPM
+    score = 100.0 * (IAQ_CO2_BAD_PPM - co2_ppm) / span_ppm
+    return float(np.clip(score, 0.0, 100.0))
+
+
+def overall_comfort_score(comfort_score: float, iaq: float) -> float:
+    """
+    Blend thermal comfort and IAQ into one 0–100 room score.
+
+    EQUATION:
+      overall = 0.7 × thermal comfort + 0.3 × IAQ
+
+    Weighting is a simulation assumption: thermal comfort dominates,
+    air quality contributes a meaningful minority share.
+
+    Parameters
+    ----------
+    comfort_score : Thermal comfort score [0, 100] (100 − PPD).
+    iaq           : IAQ score [0, 100] from iaq_score().
+
+    Returns
+    -------
+    float : overall score [0, 100].
+    """
+    return float(np.clip(0.7 * comfort_score + 0.3 * iaq, 0.0, 100.0))
