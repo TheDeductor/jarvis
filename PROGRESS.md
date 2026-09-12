@@ -951,5 +951,18 @@ tools/nlp_eval.py → 45/45 passed (100.0% accuracy, 100.0% OOS rejection).
 - `06d1185` — `chore: polish 3D scene, clean up UI icons/theme/typography, freeze for demo`
 - `747f59d` — `feat(nlp): configure live Groq integration with dotenv loading and record live eval benchmark`
 
+---
 
+## Phase 9 (Polish) - Bugfix: Absolute Command Sync
 
+**Problem identified**
+The user reported that chat commands like "set room A to 19 c" (`set_setpoint`), as well as `set_occupancy` and `set_airflow`, were not syncing with the room telemetry (e.g. setpoint stayed at 28.1).
+The issue was that absolute commands were routed through `SimulationManager.set_nlp_constraint()`, which fed them through the `_physics_delta` formula designed for relative complaints (e.g., "I'm freezing"). This discarded the explicit absolute values (like 19.0) and replaced them with a PMV-based delta (e.g., 2.5), causing erratic clamping behavior and failing to update the room's permanent base state. Furthermore, `set_occupancy` constraints were completely ignored in the overlay layer.
+
+**Files touched**
+- `backend/simulation_manager.py` — Updated `set_nlp_constraint()` to intercept explicit actions (`set_setpoint`, `set_occupancy`, `set_airflow`). These actions now directly update the `BuildingTwin` state and their respective `_base_setpoints` / `_base_airflow` trackers. When absolute commands are issued, it also clears any active/stale temporary thermal constraints on that room.
+
+**Tests run**
+- `py -3 -m pytest backend/tests` → **50 passed** in 2.02s. No regressions in constraints logic.
+
+**Commit:** `fix(be): apply explicit setpoint, airflow, and occupancy changes directly to base state to sync with telemetry`

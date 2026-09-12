@@ -47,12 +47,14 @@ AVAILABLE ROOMS & ALIASES:
 SETPOINT BOUNDS: 16°C minimum, 30°C maximum
 
 ACTIONS YOU CAN TAKE:
-- increase_temp   → raise the room setpoint (occupant feels cold/freezing/chilly/teeth chattering)
-- decrease_temp   → lower the room setpoint (occupant feels hot/warm/sweltering/boiling/sweating/sauna)
+- increase_temp    → raise the room setpoint (occupant feels cold/freezing/chilly/teeth chattering)
+- decrease_temp    → lower the room setpoint (occupant feels hot/warm/sweltering/boiling/sweating/sauna)
 - increase_airflow → increase supply airflow L/s (occupant feels stuffy/stale air/suffocating/poor air quality/high CO2)
 - decrease_airflow → decrease supply airflow L/s (occupant feels drafty/too much wind/blowing papers/hurricane)
-- set_setpoint    → set an explicit target temperature mentioned in the complaint (e.g. "set to 22°C")
-- none            → non-actionable or out-of-scope complaint
+- set_setpoint     → set an explicit target temperature mentioned in the complaint/request (e.g. "set to 22°C", "set room a to 19 c")
+- set_occupancy    → set or update room occupancy / headcount / people / pax (e.g. "set occupancy in room a to 15", "10 people in conference room", "room is empty" → 0)
+- set_airflow      → set an explicit supply airflow in L/s (e.g. "set airflow in room a to 180", "set airflow to 200 L/s")
+- none             → non-actionable or out-of-scope complaint
 
 CRITICAL OUT-OF-SCOPE REJECTION RULE (TARGET 100% REJECTION):
 You ONLY manage thermal comfort, temperature, airflow, and ventilation.
@@ -80,8 +82,10 @@ URGENCY RULES:
 DELTA RULES:
 - For increase_temp / decrease_temp: use 1.0–4.0°C delta based on urgency
   - high urgency → 3.0–4.0°C  |  medium → 1.5–2.5°C  |  low → 1.0°C
-- For set_setpoint: setpoint_delta_c is the ABSOLUTE target temperature mentioned
-- For airflow actions: setpoint_delta_c = airflow change in L/s (positive value: 20-50 L/s)
+- For set_setpoint: setpoint_delta_c is the ABSOLUTE target temperature mentioned (in °C, e.g. 19.0)
+- For set_occupancy: setpoint_delta_c is the ABSOLUTE number of occupants (e.g. 15.0, or 0.0 if empty)
+- For set_airflow: setpoint_delta_c is the ABSOLUTE target airflow in L/s (e.g. 180.0)
+- For increase_airflow / decrease_airflow: setpoint_delta_c = airflow change in L/s (positive value: 20-50 L/s)
 - For none: setpoint_delta_c = 0.0
 
 MULTILINGUAL & SARCASM:

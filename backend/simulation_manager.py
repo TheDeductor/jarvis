@@ -498,9 +498,22 @@ class SimulationManager:
         duration_mins: Optional[float] = None,
         source: str = "nlp",
     ) -> None:
-        """Sets a temporary constraint from an NLP complaint."""
+        """Sets a temporary constraint from an NLP complaint, or applies absolute commands directly."""
         with self._lock:
-            self._set_constraint(room_id, action, urgency, setpoint_delta_c, source, duration_mins=duration_mins)
+            if action == "set_setpoint":
+                self.twin.set_setpoint(room_id, setpoint_delta_c)
+                self._base_setpoints[room_id] = max(SETPOINT_MIN, min(SETPOINT_MAX, float(setpoint_delta_c)))
+                self.active_constraints[room_id] = None
+            elif action == "set_occupancy":
+                self.twin.set_occupancy(room_id, int(setpoint_delta_c))
+                # Occupancy doesn't conflict with thermal constraints, but if we wanted to clear we could.
+                # Actually, no need to clear constraints for occupancy change.
+            elif action == "set_airflow":
+                self.twin.set_airflow(room_id, setpoint_delta_c)
+                self._base_airflow[room_id] = max(AIRFLOW_MIN_LPS, min(AIRFLOW_MAX_LPS, float(setpoint_delta_c)))
+                self.active_constraints[room_id] = None
+            else:
+                self._set_constraint(room_id, action, urgency, setpoint_delta_c, source, duration_mins=duration_mins)
 
     def react_to_constraint(self, constraint_id: str, helpful: bool) -> Optional[Dict[str, Any]]:
         """
