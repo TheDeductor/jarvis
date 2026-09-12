@@ -1,0 +1,407 @@
+[
+  {
+    "id": "TC01",
+    "category": "thermal_hot",
+    "complaint": "Room A is boiling hot right now, we can barely think in this presentation.",
+    "expected_room_id": "A",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC02",
+    "category": "thermal_hot",
+    "complaint": "It feels a bit warm in the engineering room, could we cool it down?",
+    "expected_room_id": "B",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC03",
+    "category": "thermal_hot",
+    "complaint": "Server room C is heating up rapidly, cooling needed immediately.",
+    "expected_room_id": "C",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC04",
+    "category": "thermal_hot",
+    "complaint": "The reception area D is slightly warmer than comfortable.",
+    "expected_room_id": "D",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "low",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC05",
+    "category": "thermal_hot",
+    "complaint": "We are sweating in the boardroom, please turn down the thermostat.",
+    "expected_room_id": "A",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC06",
+    "category": "thermal_hot",
+    "complaint": "Room B is scorching, please blast the AC!",
+    "expected_room_id": "B",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC07",
+    "category": "thermal_cold",
+    "complaint": "Room A is freezing cold, our teeth are chattering.",
+    "expected_room_id": "A",
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC08",
+    "category": "thermal_cold",
+    "complaint": "Engineering pit B is a little chilly this morning, please raise the heat.",
+    "expected_room_id": "B",
+    "expected_action": "increase_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC09",
+    "category": "thermal_cold",
+    "complaint": "Room C temperature is way too low, turn down the chill.",
+    "expected_room_id": "C",
+    "expected_action": "increase_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC10",
+    "category": "thermal_cold",
+    "complaint": "The front desk D feels like an icebox today.",
+    "expected_room_id": "D",
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC11",
+    "category": "thermal_cold",
+    "complaint": "Can we bump up the heat slightly in room A? Just a tiny bit cold.",
+    "expected_room_id": "A",
+    "expected_action": "increase_temp",
+    "expected_urgency": "low",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC12",
+    "category": "thermal_cold",
+    "complaint": "Devs in room B are shivering with winter jackets on indoors.",
+    "expected_room_id": "B",
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC13",
+    "category": "airflow_stuffy",
+    "complaint": "The air in Room A is so stuffy and heavy, everyone is falling asleep.",
+    "expected_room_id": "A",
+    "expected_action": "increase_airflow",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC14",
+    "category": "airflow_stuffy",
+    "complaint": "Room B feels suffocating and stale, we need fresh air ventilation.",
+    "expected_room_id": "B",
+    "expected_action": "increase_airflow",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC15",
+    "category": "airflow_stuffy",
+    "complaint": "It's slightly stuffy in the IT server closet C, need more air circulation.",
+    "expected_room_id": "C",
+    "expected_action": "increase_airflow",
+    "expected_urgency": "low",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC16",
+    "category": "airflow_stuffy",
+    "complaint": "Reception D has terrible air quality and feels completely unventilated.",
+    "expected_room_id": "D",
+    "expected_action": "increase_airflow",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC17",
+    "category": "airflow_drafty",
+    "complaint": "There is an extreme draft blowing right on our necks in room A.",
+    "expected_room_id": "A",
+    "expected_action": "decrease_airflow",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC18",
+    "category": "airflow_drafty",
+    "complaint": "Vents in room B are blowing papers off the desks, reduce the fan speed.",
+    "expected_room_id": "B",
+    "expected_action": "decrease_airflow",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC19",
+    "category": "airflow_drafty",
+    "complaint": "Way too much wind coming from the AC vent in the lobby D.",
+    "expected_room_id": "D",
+    "expected_action": "decrease_airflow",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC20",
+    "category": "explicit_setpoint",
+    "complaint": "Please set room A to exactly 23°C for our client meeting.",
+    "expected_room_id": "A",
+    "expected_action": "set_setpoint",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC21",
+    "category": "explicit_setpoint",
+    "complaint": "Set temperature in room B to 21 degrees celsius.",
+    "expected_room_id": "B",
+    "expected_action": "set_setpoint",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC22",
+    "category": "explicit_setpoint",
+    "complaint": "Thermostat for server room C should be set to 19°C.",
+    "expected_room_id": "C",
+    "expected_action": "set_setpoint",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC23",
+    "category": "room_synonym",
+    "complaint": "The big meeting room is sweltering hot.",
+    "expected_room_id": "A",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC24",
+    "category": "room_synonym",
+    "complaint": "Where the devs sit is uncomfortably warm today.",
+    "expected_room_id": "B",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC25",
+    "category": "room_synonym",
+    "complaint": "The developer pit is completely freezing.",
+    "expected_room_id": "B",
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC26",
+    "category": "room_synonym",
+    "complaint": "Data center and server racks are overheating, urgently cool it down!",
+    "expected_room_id": "C",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC27",
+    "category": "room_synonym",
+    "complaint": "The front entrance lobby has stale, stuffy air.",
+    "expected_room_id": "D",
+    "expected_action": "increase_airflow",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC28",
+    "category": "room_synonym",
+    "complaint": "Visitors in the waiting area are complaining it is too chilly.",
+    "expected_room_id": "D",
+    "expected_action": "increase_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC29",
+    "category": "ambiguous_no_room",
+    "complaint": "It is way too cold in here, turn up the heat!",
+    "expected_room_id": null,
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC30",
+    "category": "ambiguous_no_room",
+    "complaint": "Air quality is awful in this building, can we get fresh ventilation?",
+    "expected_room_id": null,
+    "expected_action": "increase_airflow",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC31",
+    "category": "ambiguous_no_room",
+    "complaint": "It feels really hot and humid everywhere today.",
+    "expected_room_id": null,
+    "expected_action": "decrease_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC32",
+    "category": "sarcasm_subtle",
+    "complaint": "Loving the arctic expedition we are having in the boardroom, penguins would feel right at home.",
+    "expected_room_id": "A",
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC33",
+    "category": "sarcasm_subtle",
+    "complaint": "Did someone turn Room B into a sauna? Sweat dripping on my keyboard.",
+    "expected_room_id": "B",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC34",
+    "category": "sarcasm_subtle",
+    "complaint": "Great hurricane simulation in the lobby, papers flying everywhere.",
+    "expected_room_id": "D",
+    "expected_action": "decrease_airflow",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC35",
+    "category": "multilingual",
+    "complaint": "Hace demasiado calor en la sala de conferencias A, necesitamos aire.",
+    "expected_room_id": "A",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC36",
+    "category": "multilingual",
+    "complaint": "Il fait très froid dans le bureau des développeurs B.",
+    "expected_room_id": "B",
+    "expected_action": "increase_temp",
+    "expected_urgency": "high",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC37",
+    "category": "multilingual",
+    "complaint": "Room D mein bohot garmi hai, AC chalao please.",
+    "expected_room_id": "D",
+    "expected_action": "decrease_temp",
+    "expected_urgency": "medium",
+    "is_out_of_scope": false
+  },
+  {
+    "id": "TC38",
+    "category": "out_of_scope",
+    "complaint": "My office ergonomic chair is broken and wobbles constantly.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC39",
+    "category": "out_of_scope",
+    "complaint": "It's way too noisy in Room B, people are laughing loudly during my call.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC40",
+    "category": "out_of_scope",
+    "complaint": "There is terrible sun glare on my monitor in Room A, blinds need closing.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC41",
+    "category": "out_of_scope",
+    "complaint": "The coffee machine in the kitchen is completely out of beans again.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC42",
+    "category": "out_of_scope",
+    "complaint": "The Wi-Fi in room D keeps disconnecting every 5 minutes.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC43",
+    "category": "out_of_scope",
+    "complaint": "Someone spilled soda on the carpet near the server room door.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC44",
+    "category": "out_of_scope",
+    "complaint": "My keyboard spacebar is stuck and mouse battery died.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  },
+  {
+    "id": "TC45",
+    "category": "out_of_scope",
+    "complaint": "The overhead fluorescent light fixture in the hallway is flickering incessantly.",
+    "expected_room_id": null,
+    "expected_action": "none",
+    "expected_urgency": "low",
+    "is_out_of_scope": true
+  }
+]
