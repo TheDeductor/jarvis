@@ -2,6 +2,7 @@
 // Runs over existing backend REST endpoints.
 
 import React, { useState, useEffect } from 'react';
+import { Zap, Wind, Flame, RotateCcw, ChevronRight, ChevronDown, CheckCircle, ShieldCheck } from 'lucide-react';
 import {
   setOccupancy,
   setAirflow,
@@ -53,7 +54,7 @@ export default function DemoMacros({ state, onRefresh }: Props) {
         await setOccupancy('B', 14);
         await setAirflow('B', 60);
       },
-      '💨 Macro fired: Room B occupancy → 14, airflow → 60 L/s. Watch CO2 climb & IAQ rule engage!'
+      'Macro executed: Room B occupancy → 14, airflow → 60 L/s. Watch CO2 climb & IAQ rule engage!'
     );
 
   const handleHeatWave = () =>
@@ -62,7 +63,7 @@ export default function DemoMacros({ state, onRefresh }: Props) {
       async () => {
         await setOutsideTemperature(38.0);
       },
-      '🔥 Macro fired: Outside temp → 38.0°C. Heavy thermal load simulated!'
+      'Macro executed: Outside temp → 38.0°C. Heavy thermal load simulated!'
     );
 
   const handleForcePeak = () =>
@@ -71,7 +72,7 @@ export default function DemoMacros({ state, onRefresh }: Props) {
       async () => {
         await forcePeak();
       },
-      '⚡ Macro fired: Peak tariff ₹9.0/kWh forced. Pre-cool / Peak-relax overlay engaged with ±0.7 PMV guard!'
+      'Macro executed: Peak tariff ₹9.0/kWh forced. Pre-cool / Peak-relax overlay engaged with ±0.7 PMV guard!'
     );
 
   const handleReset = () =>
@@ -80,14 +81,14 @@ export default function DemoMacros({ state, onRefresh }: Props) {
       async () => {
         await resetSimulation();
       },
-      '🔄 System reset to nominal initial conditions.'
+      'System reset to nominal initial conditions.'
     );
 
   const handleSaveTariff = async () => {
     try {
       const res = await setTariff(slots);
       setSlots(res.slots);
-      setFeedbackMsg('✅ TOU tariff schedule updated successfully.');
+      setFeedbackMsg('TOU tariff schedule updated successfully.');
       setTimeout(() => setFeedbackMsg(null), 3000);
       onRefresh();
     } catch (e: any) {
@@ -101,22 +102,22 @@ export default function DemoMacros({ state, onRefresh }: Props) {
   const currentPrice = state.building?.current_price ?? state.electricity_price_per_kwh;
 
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 space-y-4">
+    <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-5 space-y-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-amber-400 font-bold text-sm">⚡</span>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300">
+          <Zap size={16} className="text-amber-400" />
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-200">
             Demo Macros & TOU Controls
           </h3>
         </div>
         {/* Live pricing pill */}
         <span
-          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
+          className={`text-[11px] font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 ${
             isPeak
-              ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse'
+              ? 'bg-rose-500/15 text-rose-300 border-rose-500/40 animate-pulse'
               : isPrePeak
-              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+              : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
           }`}
         >
           <span className="w-1.5 h-1.5 rounded-full bg-current" />
@@ -125,76 +126,78 @@ export default function DemoMacros({ state, onRefresh }: Props) {
       </div>
 
       {feedbackMsg && (
-        <div className="bg-sky-950/60 border border-sky-800/60 rounded-lg p-2.5 text-xs text-sky-200 font-medium animate-fadeIn">
-          {feedbackMsg}
+        <div className="bg-sky-950/80 border border-sky-800/80 rounded-lg p-2.5 text-xs text-sky-200 font-medium flex items-center gap-2 animate-fadeIn">
+          <CheckCircle size={14} className="text-sky-400 shrink-0" />
+          <span>{feedbackMsg}</span>
         </div>
       )}
 
       {/* Scripted demo macro buttons */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <button
           onClick={handleForcePeak}
           disabled={loadingAction !== null}
-          className="flex flex-col items-center justify-center p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 transition-all text-left group"
+          className="flex flex-col items-center justify-center p-3 rounded-lg border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 transition-all text-left group"
         >
-          <span className="text-base mb-1">⚡</span>
-          <span className="text-xs font-bold text-rose-300 text-center">Force Peak Price</span>
-          <span className="text-[10px] text-slate-400 text-center mt-0.5">₹9.0/kWh overlay</span>
+          <Zap size={20} className="text-rose-400 mb-1.5 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-bold text-rose-200 text-center">Force Peak Price</span>
+          <span className="text-[11px] text-slate-300 text-center mt-0.5 font-medium">₹9.0/kWh overlay</span>
         </button>
 
         <button
           onClick={handleStuffyRoomB}
           disabled={loadingAction !== null}
-          className="flex flex-col items-center justify-center p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 transition-all text-left group"
+          className="flex flex-col items-center justify-center p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 active:scale-95 transition-all text-left group"
         >
-          <span className="text-base mb-1">💨</span>
-          <span className="text-xs font-bold text-amber-300 text-center">Stuffy Room B</span>
-          <span className="text-[10px] text-slate-400 text-center mt-0.5">14 occ, 60 L/s</span>
+          <Wind size={20} className="text-amber-400 mb-1.5 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-bold text-amber-200 text-center">Stuffy Room B</span>
+          <span className="text-[11px] text-slate-300 text-center mt-0.5 font-medium">14 occ, 60 L/s</span>
         </button>
 
         <button
           onClick={handleHeatWave}
           disabled={loadingAction !== null}
-          className="flex flex-col items-center justify-center p-3 rounded-lg border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 active:scale-95 transition-all text-left group"
+          className="flex flex-col items-center justify-center p-3 rounded-lg border border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20 active:scale-95 transition-all text-left group"
         >
-          <span className="text-base mb-1">🔥</span>
-          <span className="text-xs font-bold text-orange-300 text-center">Heat Wave</span>
-          <span className="text-[10px] text-slate-400 text-center mt-0.5">38.0°C Outside</span>
+          <Flame size={20} className="text-orange-400 mb-1.5 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-bold text-orange-200 text-center">Heat Wave</span>
+          <span className="text-[11px] text-slate-300 text-center mt-0.5 font-medium">38.0°C Outside</span>
         </button>
 
         <button
           onClick={handleReset}
           disabled={loadingAction !== null}
-          className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700/60 active:scale-95 transition-all text-left group"
+          className="flex flex-col items-center justify-center p-3 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 active:scale-95 transition-all text-left group"
         >
-          <span className="text-base mb-1">🔄</span>
-          <span className="text-xs font-bold text-slate-300 text-center">Reset Defaults</span>
-          <span className="text-[10px] text-slate-400 text-center mt-0.5">Nominal state</span>
+          <RotateCcw size={20} className="text-slate-300 mb-1.5 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-bold text-white text-center">Reset Defaults</span>
+          <span className="text-[11px] text-slate-300 text-center mt-0.5 font-medium">Nominal state</span>
         </button>
       </div>
 
       {/* Comfort Guard & Price Response status card */}
-      <div className="bg-slate-900/60 border border-slate-700/60 rounded-lg p-3 text-xs space-y-2">
+      <div className="bg-[#080e1b] border border-slate-800 rounded-lg p-3 text-xs space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-300">Comfort Guard Status:</span>
-            <span className="text-sky-400 font-mono font-bold">|PMV| ≤ 0.7</span>
+            <ShieldCheck size={15} className="text-sky-400" />
+            <span className="font-semibold text-slate-200">Comfort Guard Status:</span>
+            <span className="text-sky-300 font-mono font-bold">|PMV| ≤ 0.7</span>
           </div>
           <span
             className={`font-bold px-2 py-0.5 rounded text-[10px] ${
               priceResponseActive
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                : 'bg-slate-800 text-slate-300 border border-slate-700'
             }`}
           >
             {priceResponseActive
               ? isPeak
-                ? '🔥 Relax Active (+1.5°C)'
-                : '❄️ Pre-Cool Active (-1.0°C)'
+                ? 'Relax Active (+1.5°C)'
+                : 'Pre-Cool Active (-1.0°C)'
               : 'Standby'}
           </span>
         </div>
-        <p className="text-[11px] text-slate-400 leading-relaxed">
+        <p className="text-[11px] text-slate-300 leading-relaxed">
           The price overlay adjusts setpoints dynamically during TOU windows, strictly clamped
           by a physics comfort guard. PMV is guaranteed to stay within ±0.7 Fanger limits.
         </p>
@@ -205,24 +208,24 @@ export default function DemoMacros({ state, onRefresh }: Props) {
         <div className="flex items-center justify-between">
           <button
             onClick={() => setShowTariffEditor(!showTariffEditor)}
-            className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 transition-colors"
+            className="text-xs text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1.5 transition-colors"
           >
-            <span>{showTariffEditor ? '▼' : '▶'}</span>
+            {showTariffEditor ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <span>TOU Tariff Schedule & Rates (₹{currentPrice.toFixed(2)}/kWh active)</span>
           </button>
         </div>
 
         {showTariffEditor && (
-          <div className="mt-3 bg-slate-900/80 border border-slate-700 rounded-lg p-3 space-y-3">
-            <div className="grid grid-cols-4 gap-2 text-center text-xs font-semibold text-slate-400 pb-1 border-b border-slate-800">
+          <div className="mt-3 bg-[#080e1b] border border-slate-800 rounded-lg p-3 space-y-3">
+            <div className="grid grid-cols-4 gap-2 text-center text-xs font-semibold text-slate-300 pb-1 border-b border-slate-800">
               <span>Time Slot</span>
               <span>Rate (₹/kWh)</span>
               <span>Category</span>
               <span>Action</span>
             </div>
             {slots.map((slot, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 items-center text-xs text-slate-300">
-                <span className="font-mono text-center">
+              <div key={idx} className="grid grid-cols-4 gap-2 items-center text-xs text-slate-200">
+                <span className="font-mono text-center text-slate-300">
                   {String(slot.from_h).padStart(2, '0')}:00 – {String(slot.to_h).padStart(2, '0')}:00
                 </span>
                 <input
@@ -240,11 +243,11 @@ export default function DemoMacros({ state, onRefresh }: Props) {
                 />
                 <span className="text-center font-medium">
                   {slot.is_peak ? (
-                    <span className="text-rose-400">Peak</span>
+                    <span className="text-rose-300 font-bold">Peak</span>
                   ) : slot.price <= 4.0 ? (
-                    <span className="text-emerald-400">Off-Peak</span>
+                    <span className="text-emerald-300 font-bold">Off-Peak</span>
                   ) : (
-                    <span className="text-slate-400">Shoulder</span>
+                    <span className="text-slate-300 font-medium">Shoulder</span>
                   )}
                 </span>
                 <div className="flex justify-center">
@@ -252,7 +255,7 @@ export default function DemoMacros({ state, onRefresh }: Props) {
                     onClick={() => {
                       setElectricityPrice(slot.price).then(onRefresh);
                     }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700"
+                    className="text-[10px] px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 font-semibold border border-slate-700 transition-colors"
                   >
                     Test Rate
                   </button>
@@ -262,7 +265,7 @@ export default function DemoMacros({ state, onRefresh }: Props) {
             <div className="flex justify-end pt-2">
               <button
                 onClick={handleSaveTariff}
-                className="px-3 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded text-xs font-semibold"
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold shadow-sm transition-colors"
               >
                 Apply Tariff Schedule
               </button>

@@ -24,30 +24,32 @@ function ControlRow({
   const commit = (v: number) => onSet(clamp(v));
 
   return (
-    <div className="flex items-center gap-3 py-2 border-b border-white/5">
-      <span className="text-slate-400 text-sm w-28">{label}</span>
-      <button
-        onClick={() => commit(clamp(parseFloat(draft) - step))}
-        className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center text-lg font-bold transition-all"
-      >
-        −
-      </button>
-      <input
-        type="number"
-        value={draft}
-        step={step}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { const v = parseFloat(draft); if (!isNaN(v)) commit(v); }}
-        onKeyDown={(e) => { if (e.key === 'Enter') { const v = parseFloat(draft); if (!isNaN(v)) commit(v); } }}
-        className="w-20 text-center bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-white text-sm"
-      />
-      <button
-        onClick={() => commit(clamp(parseFloat(draft) + step))}
-        className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center text-lg font-bold transition-all"
-      >
-        +
-      </button>
-      <span className="text-slate-500 text-xs">{unit}</span>
+    <div className="flex items-center justify-between py-2 border-b border-slate-800">
+      <span className="text-slate-200 text-xs font-semibold w-24">{label}</span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => commit(clamp(parseFloat(draft) - step))}
+          className="w-7 h-7 rounded-md bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center text-sm font-bold border border-slate-700 transition-all active:scale-95"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          value={draft}
+          step={step}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { const v = parseFloat(draft); if (!isNaN(v)) commit(v); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { const v = parseFloat(draft); if (!isNaN(v)) commit(v); } }}
+          className="w-16 text-center bg-[#080e1b] border border-slate-700 rounded-md px-2 py-1 text-white font-mono text-xs font-bold"
+        />
+        <button
+          onClick={() => commit(clamp(parseFloat(draft) + step))}
+          className="w-7 h-7 rounded-md bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center text-sm font-bold border border-slate-700 transition-all active:scale-95"
+        >
+          +
+        </button>
+        <span className="text-slate-300 text-xs font-medium w-7 text-left">{unit}</span>
+      </div>
     </div>
   );
 }
@@ -56,11 +58,11 @@ function Metric({ label, value, unit, highlight }: {
   label: string; value: string; unit?: string; highlight?: boolean;
 }) {
   return (
-    <div className="bg-slate-700/50 rounded-lg p-3">
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className={`text-lg font-bold ${highlight ? 'text-emerald-400' : 'text-white'}`}>
+    <div className="bg-[#080e1b] border border-slate-800/80 rounded-lg p-3">
+      <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide mb-0.5">{label}</p>
+      <p className={`text-base font-bold font-mono ${highlight ? 'text-emerald-400' : 'text-white'}`}>
         {value}
-        {unit && <span className="text-xs text-slate-400 ml-1 font-normal">{unit}</span>}
+        {unit && <span className="text-xs text-slate-300 ml-1 font-normal">{unit}</span>}
       </p>
     </div>
   );
@@ -76,19 +78,21 @@ export default function SelectedRoomPanel({ room, onRefresh }: Props) {
   const isCooling = room.hvac_power_kw < 0;
   const comfortColor =
     room.comfort_score >= 85 ? 'text-emerald-400' :
-    room.comfort_score >= 65 ? 'text-amber-400' : 'text-red-400';
+    room.comfort_score >= 65 ? 'text-amber-400' : 'text-rose-400';
 
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 space-y-5">
+    <div className="bg-[#0c1424] rounded-xl p-5 space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-slate-300 tracking-widest uppercase">
+        <h2 className="text-sm font-extrabold text-white tracking-widest uppercase">
           Zone {room.room_id}
         </h2>
-        <span className="text-xs text-slate-500 font-medium tracking-wide">Live Telemetry</span>
+        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 tracking-wider uppercase">
+          Live Telemetry
+        </span>
       </div>
 
       {/* Metrics grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         <Metric label="Air Temp" value={room.temperature_c.toFixed(2)} unit="°C" />
         <Metric label="Wall Temp" value={room.wall_temperature_c.toFixed(2)} unit="°C" />
         <Metric label="Setpoint" value={room.setpoint_c.toFixed(1)} unit="°C" />
@@ -98,36 +102,36 @@ export default function SelectedRoomPanel({ room, onRefresh }: Props) {
         <Metric label="Energy" value={room.energy_kwh.toFixed(3)} unit="kWh" />
         <Metric label="Airflow" value={room.airflow_lps.toFixed(0)} unit="L/s" />
         <Metric label="Occupancy" value={room.occupancy.toString()} unit="pax" />
-        <div className="bg-slate-900/40 border border-slate-700/50 rounded-lg p-3">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">PMV Index</p>
-          <p className={`text-lg font-bold ${
+        <div className="bg-[#080e1b] border border-slate-800/80 rounded-lg p-3">
+          <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-0.5">PMV Index</p>
+          <p className={`text-base font-bold font-mono ${
             Math.abs(room.pmv) <= 0.5 ? 'text-emerald-400' :
-            Math.abs(room.pmv) <= 1.5 ? 'text-amber-500' : 'text-red-400'
+            Math.abs(room.pmv) <= 1.5 ? 'text-amber-400' : 'text-rose-400'
           }`}>
             {room.pmv > 0 ? '+' : ''}{room.pmv.toFixed(2)}
-            <span className="text-xs text-slate-500 ml-1.5 font-medium">
+            <span className="text-xs text-slate-300 ml-1.5 font-medium">
               {room.pmv <= -2 ? 'Cold' : room.pmv <= -0.5 ? 'Cool' : room.pmv <= 0.5 ? 'Neutral' : room.pmv <= 1.5 ? 'Warm' : 'Hot'}
             </span>
           </p>
         </div>
-        <div className="bg-slate-900/40 border border-slate-700/50 rounded-lg p-3">
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Comfort</p>
-          <p className={`text-lg font-bold ${comfortColor}`}>
+        <div className="bg-[#080e1b] border border-slate-800/80 rounded-lg p-3">
+          <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-0.5">Comfort</p>
+          <p className={`text-base font-bold font-mono ${comfortColor}`}>
             {room.comfort_score.toFixed(0)}
-            <span className="text-xs text-slate-500 ml-1.5 font-medium">/100</span>
+            <span className="text-xs text-slate-300 ml-1.5 font-medium">/100</span>
           </p>
         </div>
       </div>
 
       {/* HVAC visual bar */}
       <div>
-        <div className="flex justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+        <div className="flex justify-between text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
           <span>{isCooling ? 'Cooling Mode' : 'Heating Mode'}</span>
-          <span>{hvacPct}% Output</span>
+          <span className="text-white font-mono">{hvacPct}% Output</span>
         </div>
-        <div className="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+        <div className="h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
           <div
-            className={`h-full transition-all duration-500 ${isCooling ? 'bg-blue-500' : 'bg-amber-500'}`}
+            className={`h-full transition-all duration-500 ${isCooling ? 'bg-sky-500' : 'bg-amber-500'}`}
             style={{ width: `${hvacPct}%` }}
           />
         </div>
@@ -135,7 +139,7 @@ export default function SelectedRoomPanel({ room, onRefresh }: Props) {
 
       {/* Controls */}
       <div className="pt-2">
-        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Overrides</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-200 mb-3">Overrides</p>
         <ControlRow
           label="Setpoint"
           value={room.setpoint_c}

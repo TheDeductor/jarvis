@@ -20,8 +20,8 @@ const ACTION_LABELS: Record<string, string> = {
   decrease_temp: '↓ Temperature',
   increase_airflow: '↑ Airflow',
   decrease_airflow: '↓ Airflow',
-  set_setpoint: '⚙ Set Setpoint',
-  none: '✓ No action',
+  set_setpoint: 'Set Setpoint',
+  none: 'No Action',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -209,14 +209,14 @@ export default function NLPChatPanel({ onRefresh }: Props) {
   return (
     <div
       id="nlp-chat-panel"
-      className="flex flex-col rounded-xl border border-white/10 bg-slate-900/70 backdrop-blur-sm overflow-hidden mt-4"
+      className="flex flex-col rounded-xl border border-slate-800 bg-[#0c1424] backdrop-blur-sm overflow-hidden mt-4 shadow-sm"
       style={{ height: '420px' }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-slate-800/50 shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-[#09101d] shrink-0">
         <div className="flex items-center gap-3">
           {/* Animated AI icon */}
-          <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+          <div className="relative w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/20">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.575 1.575a3.75 3.75 0 01-2.651 1.097H8.426c-.995 0-1.95-.394-2.651-1.097L4.2 15m15.6 0l-5.37-5.37m0 0L9.75 14.5M19.8 15L14.25 9.63m-4.5 4.87L4.2 15" />
             </svg>
@@ -225,33 +225,33 @@ export default function NLPChatPanel({ onRefresh }: Props) {
             )}
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-100">AI Feedback Assistant</h3>
-            <p className="text-xs text-slate-500">Groq · openai/gpt-oss-120b · Live HVAC control</p>
+            <h3 className="text-sm font-bold text-white">AI Feedback Assistant</h3>
+            <p className="text-xs text-slate-300">Natural language complaint parsing</p>
           </div>
         </div>
-        <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+        <span className={`text-xs font-bold px-2.5 py-0.5 rounded border ${
           loading
-            ? 'text-blue-400 border-blue-500/30 bg-blue-500/10 animate-pulse'
-            : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+            ? 'text-blue-300 border-blue-500/40 bg-blue-500/15 animate-pulse'
+            : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/15'
         }`}>
           {loading ? 'Processing…' : 'Ready'}
         </span>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
+      {/* Messages list */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex flex-col gap-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+            className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'rounded-tr-sm bg-blue-600/80 text-white border border-blue-500/30'
+                  ? 'rounded-tr-sm bg-blue-600 text-white shadow-sm'
                   : msg.error
-                  ? 'rounded-tl-sm bg-red-900/40 text-red-300 border border-red-500/30'
-                  : 'rounded-tl-sm bg-slate-700/60 text-slate-200 border border-white/10'
+                  ? 'rounded-tl-sm bg-rose-950/80 text-rose-200 border border-rose-800/60'
+                  : 'rounded-tl-sm bg-[#131d31] text-slate-100 border border-slate-700/60'
               }`}
             >
               {msg.text}
@@ -261,7 +261,7 @@ export default function NLPChatPanel({ onRefresh }: Props) {
                 <ConstraintCard c={msg.constraint} action_taken={msg.action_taken} />
               )}
             </div>
-            <span className="text-xs text-slate-600 px-1">{formatTime(msg.timestamp)}</span>
+            <span className="text-xs text-slate-400 px-1 mt-1 font-medium">{formatTime(msg.timestamp)}</span>
           </div>
         ))}
 
@@ -275,14 +275,14 @@ export default function NLPChatPanel({ onRefresh }: Props) {
       </div>
 
       {/* Quick complaint chips */}
-      <div className="px-4 py-2 flex gap-2 flex-wrap border-t border-white/5 shrink-0 bg-slate-900/40">
+      <div className="px-4 py-2 flex gap-2 flex-wrap border-t border-slate-800 shrink-0 bg-[#09101d]">
         {QUICK_COMPLAINTS.map((q) => (
           <button
             key={q}
             id={`quick-complaint-${q.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()}`}
             onClick={() => send(q)}
             disabled={loading}
-            className="text-xs px-2.5 py-1 rounded-full border border-slate-600/60 bg-slate-800/60 text-slate-400 hover:border-blue-500/50 hover:text-blue-300 hover:bg-blue-500/10 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="text-xs px-3 py-1 rounded-full border border-slate-700 bg-slate-800 text-slate-200 hover:border-blue-500 hover:text-white hover:bg-blue-600/20 transition-all font-medium disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {q}
           </button>
@@ -290,7 +290,7 @@ export default function NLPChatPanel({ onRefresh }: Props) {
       </div>
 
       {/* Input */}
-      <div className="px-4 pb-4 pt-2 flex gap-2 shrink-0 border-t border-white/5">
+      <div className="px-4 pb-4 pt-2.5 flex gap-2 shrink-0 border-t border-slate-800 bg-[#0c1424]">
         <textarea
           ref={textareaRef}
           id="nlp-chat-input"
@@ -300,14 +300,14 @@ export default function NLPChatPanel({ onRefresh }: Props) {
           onKeyDown={handleKeyDown}
           disabled={loading}
           placeholder="Describe how you feel… (Enter to send)"
-          className="flex-1 resize-none bg-slate-800/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30 transition-all disabled:opacity-50"
+          className="flex-1 resize-none bg-[#080e1b] border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all disabled:opacity-50"
           style={{ minHeight: '42px', maxHeight: '100px' }}
         />
         <button
           id="nlp-send-btn"
           onClick={() => send(input)}
           disabled={loading || !input.trim()}
-          className="shrink-0 w-10 h-10 self-end rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-lg shadow-blue-500/20 hover:from-blue-400 hover:to-violet-500 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+          className="shrink-0 w-10 h-10 self-end rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading ? (
             <svg className="w-4 h-4 text-white animate-spin" fill="none" viewBox="0 0 24 24">

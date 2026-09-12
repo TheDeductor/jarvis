@@ -1,6 +1,6 @@
 # NLP Evaluation Report — JARVIS Building Twin
 
-**Date / Time (UTC):** `2026-09-12T06:31:52.787447+00:00`  
+**Date / Time (UTC):** `2026-09-12T06:47:24.453247+00:00`  
 **Evaluation Engine:** `deterministic_pattern_parser` (`offline` mode)  
 **Test Corpus Size:** `45` labeled cases  
 **Runtime Duration:** `0.0s`  

@@ -4,9 +4,10 @@
 //          fetchHistory() is called every 2000ms.
 //          All displayed values come from these API calls — no local physics.
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { SimulationState, HistoryPoint, RoomId } from './types';
 import { fetchState, fetchHistory } from './api';
+import { BarChart3, Sliders, Zap } from 'lucide-react';
 
 import BuildingMap from './components/BuildingMap';
 import BuildingScene3D from './components/BuildingScene3D';
@@ -47,8 +48,6 @@ export default function App() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'sensors'>('telemetry');
-  // P4: flip to '3d' default now that all visuals are driven by live backend state.
-  // The 2D map remains available via the toggle in the header.
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
 
   const refreshState = useCallback(async () => {
@@ -87,16 +86,16 @@ export default function App() {
   const selectedRoomData = state.rooms[selectedRoom];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#070d18] text-slate-100 font-sans selection:bg-blue-500/30">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 px-6 py-4 flex items-center justify-between shadow-sm">
+      <header className="border-b border-slate-800 bg-[#0c1424]/90 backdrop-blur-md px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-40">
         <div className="flex items-center gap-4">
-          <div className="w-1.5 h-8 bg-blue-500 rounded-full" />
+          <div className="w-1.5 h-8 bg-blue-500 rounded-full shadow-sm shadow-blue-500/50" />
           <div>
-            <h1 className="text-lg font-bold text-slate-100 tracking-tight">
+            <h1 className="text-lg font-bold text-white tracking-tight">
               Digital Twin Simulation Engine
             </h1>
-            <p className="text-xs text-slate-500 font-medium">
+            <p className="text-xs text-slate-300 font-medium">
               Zone Control & Analytics Dashboard
             </p>
           </div>
@@ -104,18 +103,19 @@ export default function App() {
         <div className="flex items-center gap-3">
           {state.building?.price_response_active && (
             <span className="text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase border-amber-500/40 bg-amber-500/15 text-amber-300 flex items-center gap-1.5 animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <Zap size={13} className="text-amber-300" />
               Price Response Active
             </span>
           )}
-          <span className={`text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase ${
+          <span className={`text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase flex items-center gap-1.5 ${
             connected
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
-              : 'border-red-500/30 bg-red-500/10 text-red-500'
+              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+              : 'border-rose-500/40 bg-rose-500/15 text-rose-300'
           }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? (state.running ? 'bg-emerald-400 animate-ping' : 'bg-emerald-400') : 'bg-rose-400'}`} />
             {connected ? (state.running ? 'System Live' : 'System Ready') : 'System Offline'}
           </span>
-          <span className="text-xs text-slate-500 font-medium">
+          <span className="text-xs text-slate-300 font-medium px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50">
             {state.running ? `T-Scale: ${state.speed}×` : 'T-Scale: —'}
           </span>
         </div>
@@ -123,30 +123,30 @@ export default function App() {
 
       {/* Error banner */}
       {backendError && (
-        <div className="bg-red-950/50 border-b border-red-900/50 px-6 py-2.5 text-red-400 text-sm font-medium flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> {backendError}
+        <div className="bg-rose-950/80 border-b border-rose-900/60 px-6 py-2.5 text-rose-200 text-sm font-medium flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> {backendError}
         </div>
       )}
 
       <main className="max-w-screen-2xl mx-auto px-6 py-6 space-y-6">
         {/* Top: building map + controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_290px] gap-5">
           {/* Left: building view + environment */}
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div>
               <div className="flex items-center justify-between px-1 pb-2">
-                <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                <span className="text-xs font-bold uppercase tracking-widest text-slate-300">
                   Building View
                 </span>
-                <div className="flex items-center gap-0.5 rounded-lg border border-slate-700/60 bg-slate-800/40 p-0.5">
+                <div className="flex items-center gap-1 rounded-lg border border-slate-700/70 bg-[#0d1627] p-1 shadow-inner">
                   {(['2d', '3d'] as const).map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setViewMode(mode)}
-                      className={`rounded-md px-3 py-1 text-[11px] font-bold uppercase tracking-widest transition-colors ${
+                      className={`rounded-md px-3.5 py-1 text-[11px] font-bold uppercase tracking-widest transition-all ${
                         viewMode === mode
-                          ? 'bg-sky-500/20 text-sky-300'
-                          : 'text-slate-500 hover:text-slate-300'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
                       }`}
                     >
                       {mode === '2d' ? '2D Map' : '3D Twin'}
@@ -174,7 +174,7 @@ export default function App() {
           </div>
 
           {/* Right: controls + selected room */}
-          <div className="space-y-4">
+          <div className="space-y-5">
             <SimulationControls
               running={state.running}
               speed={state.speed}
@@ -184,28 +184,30 @@ export default function App() {
               onRefresh={refreshState}
             />
             {selectedRoomData && (
-              <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden">
+              <div className="bg-[#0c1424] border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                 {/* Tab bar */}
-                <div className="flex border-b border-white/5">
+                <div className="flex border-b border-slate-800 bg-[#09101d]">
                   <button
                     onClick={() => setActiveTab('telemetry')}
-                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
+                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
                       activeTab === 'telemetry'
-                        ? 'text-sky-400 border-b-2 border-sky-400 bg-sky-500/5'
-                        : 'text-slate-500 hover:text-slate-300'
+                        ? 'text-sky-300 border-b-2 border-sky-400 bg-sky-500/10'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    📊 Room Detail
+                    <BarChart3 size={14} />
+                    <span>Room Detail</span>
                   </button>
                   <button
                     onClick={() => setActiveTab('sensors')}
-                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${
+                    className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
                       activeTab === 'sensors'
-                        ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
-                        : 'text-slate-500 hover:text-slate-300'
+                        ? 'text-amber-300 border-b-2 border-amber-400 bg-amber-500/10'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    ⚡ Sensors
+                    <Sliders size={14} />
+                    <span>Sensors</span>
                   </button>
                 </div>
                 {/* Tab content */}
@@ -222,27 +224,27 @@ export default function App() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <TemperatureChart history={history} roomId={selectedRoom} />
           <EnergyChart history={history} />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <ComfortChart history={history} roomId={selectedRoom} />
 
           {/* Quick stats for all 4 rooms */}
-          <div className="bg-slate-800/60 border border-white/10 rounded-xl p-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">
+          <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-5 shadow-sm">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-3">
               All Rooms — Current State
             </h3>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-slate-500 text-xs border-b border-white/10 pb-1">
-                  <th className="py-1 font-medium">Room</th>
-                  <th className="py-1 font-medium">Temp</th>
-                  <th className="py-1 font-medium">Setpt</th>
-                  <th className="py-1 font-medium">RH%</th>
-                  <th className="py-1 font-medium">HVAC</th>
-                  <th className="py-1 font-medium">Cmft</th>
+                <tr className="text-left text-slate-400 text-xs border-b border-slate-800 pb-1">
+                  <th className="py-2 font-semibold">Room</th>
+                  <th className="py-2 font-semibold">Temp</th>
+                  <th className="py-2 font-semibold">Setpt</th>
+                  <th className="py-2 font-semibold">RH%</th>
+                  <th className="py-2 font-semibold">HVAC</th>
+                  <th className="py-2 font-semibold">Cmft</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,19 +253,19 @@ export default function App() {
                   if (!r) return null;
                   const comfortColor =
                     r.comfort_score >= 85 ? 'text-emerald-400' :
-                    r.comfort_score >= 65 ? 'text-amber-400' : 'text-red-400';
+                    r.comfort_score >= 65 ? 'text-amber-400' : 'text-rose-400';
                   return (
                     <tr
                       key={rid}
                       onClick={() => setSelectedRoom(rid)}
-                      className={`cursor-pointer border-b border-white/5 hover:bg-white/5 transition-colors ${selectedRoom === rid ? 'bg-sky-500/10' : ''}`}
+                      className={`cursor-pointer border-b border-slate-800/60 hover:bg-slate-800/40 transition-colors ${selectedRoom === rid ? 'bg-sky-500/15' : ''}`}
                     >
-                      <td className="py-1.5 font-bold text-sky-400">{rid}</td>
-                      <td className="py-1.5">{r.temperature_c.toFixed(1)}°</td>
-                      <td className="py-1.5 text-slate-400">{r.setpoint_c.toFixed(1)}°</td>
-                      <td className="py-1.5">{r.humidity_pct.toFixed(0)}%</td>
-                      <td className="py-1.5">{r.hvac_power_kw.toFixed(1)} kW</td>
-                      <td className={`py-1.5 font-medium ${comfortColor}`}>{r.comfort_score.toFixed(0)}</td>
+                      <td className="py-2 font-bold text-sky-400">{rid}</td>
+                      <td className="py-2 font-medium text-slate-200">{r.temperature_c.toFixed(1)}°</td>
+                      <td className="py-2 text-slate-400">{r.setpoint_c.toFixed(1)}°</td>
+                      <td className="py-2 text-slate-300">{r.humidity_pct.toFixed(0)}%</td>
+                      <td className="py-2 text-slate-300">{r.hvac_power_kw.toFixed(1)} kW</td>
+                      <td className={`py-2 font-bold ${comfortColor}`}>{r.comfort_score.toFixed(0)}</td>
                     </tr>
                   );
                 })}
@@ -273,9 +275,8 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="text-center text-slate-600 text-xs py-4 border-t border-white/5">
-        Digital Twin Simulation · Grey-box 1R1C model · NOT physically calibrated ·
-        NOT EnergyPlus · NOT CFD · Virtual sensor data only
+      <footer className="text-center text-slate-400 text-xs py-5 border-t border-slate-800/80">
+        Digital Twin Simulation · Grey-box 1R1C model · Physics-guarded TOU optimization · Virtual sensor telemetry
       </footer>
     </div>
   );

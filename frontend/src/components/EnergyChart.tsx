@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea,
 } from 'recharts';
+import { Coins, Zap } from 'lucide-react';
 import type { HistoryPoint } from '../types';
 
 interface Props {
@@ -53,20 +54,20 @@ export default function EnergyChart({ history }: Props) {
   }
 
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 space-y-4">
+    <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-5 space-y-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-200">
             {metric === 'cost' ? 'Tariff Cost Parity (₹)' : 'Cumulative Energy (kWh)'} — Adaptive vs Baseline
           </h3>
-          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400">
+          <div className="flex items-center gap-3 mt-1 text-xs font-medium">
             {metric === 'cost' && costSavings > 0 && (
               <span className="text-emerald-400 font-semibold">
                 Savings: ₹{costSavings.toFixed(2)} ({savingsPct.toFixed(1)}%)
               </span>
             )}
             {peakKw > 0 && (
-              <span className="text-amber-400 font-medium">
+              <span className="text-amber-400 font-semibold">
                 Rolling 15-min Peak: {peakKw.toFixed(2)} kW
               </span>
             )}
@@ -74,38 +75,40 @@ export default function EnergyChart({ history }: Props) {
         </div>
 
         {/* View toggle */}
-        <div className="flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 p-0.5">
+        <div className="flex items-center gap-1 rounded-lg border border-slate-700/80 bg-[#080e1b] p-1">
           <button
             onClick={() => setMetric('cost')}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+            className={`rounded-md px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
               metric === 'cost'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
-            💰 Cost (₹)
+            <Coins size={14} />
+            <span>Cost (₹)</span>
           </button>
           <button
             onClick={() => setMetric('energy')}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+            className={`rounded-md px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
               metric === 'energy'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
-            ⚡ Energy (kWh)
+            <Zap size={14} />
+            <span>Energy (kWh)</span>
           </button>
         </div>
       </div>
 
       {data.length < 2 ? (
-        <p className="text-slate-500 text-sm text-center py-10 font-medium">
+        <p className="text-slate-300 text-sm text-center py-12 font-medium">
           Awaiting simulation data...
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={210}>
           <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
 
             {/* Shaded peak windows */}
             {peakSegments.map((seg, idx) => (
@@ -114,36 +117,36 @@ export default function EnergyChart({ history }: Props) {
                 x1={seg.start}
                 x2={seg.end}
                 fill="#f43f5e"
-                fillOpacity={0.08}
+                fillOpacity={0.12}
                 stroke="#f43f5e"
-                strokeOpacity={0.2}
+                strokeOpacity={0.3}
               />
             ))}
 
             <XAxis
               dataKey="time"
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
               axisLine={false}
               tickLine={false}
               interval={Math.max(1, Math.floor(data.length / 8))}
             />
             <YAxis
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
               axisLine={false}
               tickLine={false}
               unit={metric === 'cost' ? ' ₹' : ' kWh'}
             />
             <Tooltip
               contentStyle={{
-                background: '#0f172a',
-                border: '1px solid #334155',
+                background: '#0a101d',
+                border: '1px solid #1e293b',
                 borderRadius: 8,
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                boxShadow: '0 8px 16px -2px rgb(0 0 0 / 0.5)',
               }}
-              labelStyle={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}
-              itemStyle={{ color: '#f8fafc', fontSize: 13, fontWeight: 500 }}
+              labelStyle={{ color: '#cbd5e1', fontSize: 12, marginBottom: 4, fontWeight: 600 }}
+              itemStyle={{ color: '#ffffff', fontSize: 13, fontWeight: 600 }}
             />
-            <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 6 }} />
+            <Legend wrapperStyle={{ fontSize: 11, color: '#cbd5e1', paddingTop: 6 }} />
 
             {metric === 'cost' ? (
               <>
@@ -152,7 +155,7 @@ export default function EnergyChart({ history }: Props) {
                   dataKey="adaptiveCost"
                   name="Adaptive Cost (₹)"
                   stroke="#38bdf8"
-                  strokeWidth={2}
+                  strokeWidth={2.5}
                   dot={false}
                   isAnimationActive={false}
                 />
@@ -174,7 +177,7 @@ export default function EnergyChart({ history }: Props) {
                   dataKey="adaptiveEnergy"
                   name="Adaptive Energy (kWh)"
                   stroke="#22d3ee"
-                  strokeWidth={2}
+                  strokeWidth={2.5}
                   dot={false}
                   isAnimationActive={false}
                 />

@@ -120,7 +120,7 @@ function FanMesh({
 function ConstraintBeacon({
   constraint,
   status,
-  renewals = 0,
+  renewals: _renewals = 0,
 }: {
   constraint?: string | null;
   status?: string;
@@ -270,25 +270,34 @@ function RoomFloor({
       {/* Floor slab — colour driven by live temperature_c */}
       <mesh
         receiveShadow
-        onPointerOver={(e) => { e.stopPropagation(); setHovered(true); }}
-        onPointerOut={() => setHovered(false)}
+        onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto'; }}
         onClick={(e) => { e.stopPropagation(); onSelect(roomId); }}
       >
         <boxGeometry args={[ROOM_W, SLAB_H, ROOM_D]} />
         <meshStandardMaterial
           color={tint}
-          emissive={selected ? '#0ea5e9' : '#000000'}
-          emissiveIntensity={selected ? 0.25 : 0}
-          roughness={0.85}
-          metalness={0.05}
+          emissive={selected ? '#0284c7' : '#000000'}
+          emissiveIntensity={selected ? 0.35 : 0}
+          roughness={0.8}
+          metalness={0.08}
         />
       </mesh>
 
       <lineSegments geometry={outline}>
         <lineBasicMaterial
-          color={selected ? '#38bdf8' : hovered ? '#475569' : '#334155'}
+          color={selected ? '#38bdf8' : hovered ? '#64748b' : '#334155'}
+          linewidth={selected ? 2 : 1}
         />
       </lineSegments>
+
+      {/* Selected room elevated frame */}
+      {selected && (
+        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[ROOM_W * 0.46, ROOM_W * 0.48, 4]} />
+          <meshBasicMaterial color="#38bdf8" transparent opacity={0.6} side={THREE.DoubleSide} />
+        </mesh>
+      )}
 
       {/* CO₂ haze — opacity driven by co2_ppm */}
       <Co2Haze co2_ppm={room.co2_ppm} />
@@ -328,9 +337,7 @@ function RoomFloor({
       </Suspense>
 
       {/* ── Info label — all values from live backend state ─────────────────
-           The label shows: zone, persona, temperature, comfort, CO₂, airflow,
-           and (when present) the active constraint. All field values are read
-           directly from the room prop — no derived/estimated values.
+           Clean, high-contrast industrial typography without emojis.
       */}
       <Html
         center
@@ -339,17 +346,28 @@ function RoomFloor({
         zIndexRange={[20, 0]}
         style={{ pointerEvents: 'none' }}
       >
-        <div className="flex flex-col items-center gap-0.5 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/75 px-2.5 py-1.5 backdrop-blur-sm">
-          {/* Zone + persona */}
-          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-200">
-            Zone {roomId}
-          </span>
-          <span className="text-[10px] font-medium tracking-wide text-slate-400">
+        <div className={`flex flex-col items-center gap-0.5 whitespace-nowrap rounded-lg border px-3 py-2 backdrop-blur-md transition-all shadow-md ${
+          selected
+            ? 'border-sky-400 bg-[#0c162c]/95 ring-2 ring-sky-500/40'
+            : 'border-slate-700/70 bg-[#09101d]/90'
+        }`}>
+          {/* Zone + persona + selection badge */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-white">
+              Zone {roomId}
+            </span>
+            {selected && (
+              <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-sky-500/30 text-sky-200 border border-sky-400/40">
+                ACTIVE
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] font-semibold tracking-wide text-slate-300">
             {PERSONA[roomId]}
           </span>
 
           {/* Live temperature */}
-          <span className="text-[10px] font-semibold text-slate-300">
+          <span className="text-[11px] font-bold text-white font-mono">
             {room.temperature_c.toFixed(1)}°C
           </span>
 
@@ -362,22 +380,21 @@ function RoomFloor({
           </span>
 
           {/* IAQ telemetry */}
-          <span className="text-[9px] text-slate-500">
+          <span className="text-[9px] text-slate-300 font-mono">
             CO₂ {room.co2_ppm.toFixed(0)} ppm · {room.airflow_lps.toFixed(0)} L/s
           </span>
 
-          {/* Active constraint with lifecycle status — only shown when backend has one */}
+          {/* Active constraint with lifecycle status */}
           {constraintText && (
-            <span className="text-[9px] font-bold uppercase tracking-wide" style={{
-              color: constraintRecord?.status === 'escalated' ? '#ef4444'
-                   : constraintRecord?.status === 'renewed'   ? '#f97316'
-                   : '#fbbf24'
+            <span className="text-[9px] font-bold uppercase tracking-wide flex items-center gap-1" style={{
+              color: constraintRecord?.status === 'escalated' ? '#f87171'
+                   : constraintRecord?.status === 'renewed'   ? '#fb923c'
+                   : '#fde047'
             }}>
-              {constraintRecord?.status === 'escalated' ? '🚨' :
-               constraintRecord?.status === 'renewed'   ? '🔄' : '⚡'}{' '}
-              {constraintText}
+              <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+              <span>{constraintText}</span>
               {constraintRecord && constraintRecord.renewals > 0 && (
-                <span className="ml-1 text-[8px] opacity-70">(×{constraintRecord.renewals + 1})</span>
+                <span className="ml-0.5 text-[8px] opacity-80">(x{constraintRecord.renewals + 1})</span>
               )}
             </span>
           )}
@@ -387,11 +404,11 @@ function RoomFloor({
             <span
               className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
                 isPeak
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  ? 'bg-rose-500/25 text-rose-200 border-rose-500/40'
+                  : 'bg-emerald-500/25 text-emerald-200 border-emerald-500/40'
               }`}
             >
-              ⚡ TOU {isPeak ? 'RELAX' : 'PRE-COOL'}
+              TOU {isPeak ? 'RELAX' : 'PRE-COOL'}
             </span>
           )}
         </div>
