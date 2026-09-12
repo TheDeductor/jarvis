@@ -14,6 +14,8 @@ Endpoints:
   POST /api/rooms/{room_id}/airflow
   POST /api/environment/outside-temperature
   POST /api/environment/electricity-price
+  GET  /api/constraints                    (P5)
+  POST /api/constraints/{id}/react         (P5)
 """
 from __future__ import annotations
 
@@ -24,6 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import (
     AirflowRequest,
+    ConstraintListResponse,
+    ConstraintReactRequest,
     ElectricityPriceRequest,
     MessageResponse,
     OccupancyRequest,
@@ -35,6 +39,8 @@ from .models import (
     SensorDataRequest,
     SetpointRequest,
     SimulationSpeedRequest,
+    TariffRequest,
+    TariffResponse,
 )
 from .simulation_manager import SimulationManager
 from .nlp_engine import parse_complaint
@@ -223,6 +229,26 @@ def set_electricity_price(body: ElectricityPriceRequest):
     return MessageResponse(message=f"Electricity price → ₹{body.price_per_kwh}/kWh.")
 
 
+@app.get("/api/environment/tariff", response_model=TariffResponse, tags=["environment"])
+def get_tariff():
+    """Return TOU tariff schedule and current pricing status."""
+    return manager.get_tariff()
+
+
+@app.post("/api/environment/tariff", response_model=TariffResponse, tags=["environment"])
+def set_tariff(body: TariffRequest):
+    """Update TOU tariff slots and recompute current rate."""
+    slots_dicts = [s.model_dump() for s in body.slots]
+    return manager.set_tariff_slots(slots_dicts)
+
+
+@app.post("/api/environment/force-peak", response_model=MessageResponse, tags=["environment"])
+def force_peak():
+    """Demo macro: Force peak pricing now (sets rate to ₹9.0/kWh, triggers price response overlay)."""
+    manager.force_peak(True)
+    return MessageResponse(message="Peak pricing forced active (₹9.0/kWh). Price response overlay engaged.")
+
+
 @app.post("/api/environment/sensor-data", response_model=MessageResponse, tags=["hardware"])
 def inject_outside_sensor_data(body: OutsideSensorDataRequest):
     """
@@ -310,3 +336,43 @@ def chat_message(body: ChatMessageRequest):
         "constraint": constraint
     }
 
+
+# ── P5 — Constraint lifecycle endpoints ──────────────────────────────────────
+
+@app.get(
+    "/api/constraints",
+    response_model=ConstraintListResponse,
+    tags=["constraints"],
+    summary="List active + recent constraints with stats",
+)
+async def get_constraints() -> ConstraintListResponse:
+    """
+    Returns all active constraints plus the last 50 resolved/escalated events
+    with aggregate statistics (counts by status, median resolution time).
+    """
+    data = manager.get_constraints()
+    return ConstraintListResponse(**data)
+
+
+@app.post(
+    "/api/constraints/{constraint_id}/react",
+    response_model=MessageResponse,
+    tags=["constraints"],
+    summary="Record occupant feedback on a constraint outcome",
+)
+async def react_to_constraint(
+    constraint_id: str = Path(..., description="UUID of the constraint record"),
+    body: ConstraintReactRequest = ...,
+) -> MessageResponse:
+    """
+    Record whether an occupant found the HVAC response helpful.
+    Feedback is stored on the record for P8 NLP evaluation.
+    Returns 404 if the constraint ID is not found in active or history.
+    """
+    result = manager.react_to_constraint(constraint_id, body.helpful)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Constraint '{constraint_id}' not found")
+    return MessageResponse(
+        message=f"Feedback recorded: helpful={body.helpful} for constraint {constraint_id}",
+        success=True,
+    )

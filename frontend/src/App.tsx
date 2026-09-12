@@ -18,6 +18,7 @@ import TemperatureChart from './components/TemperatureChart';
 import EnergyChart from './components/EnergyChart';
 import ComfortChart from './components/ComfortChart';
 import NLPChatPanel from './components/NLPChatPanel';
+import DemoMacros from './components/DemoMacros';
 
 const POLL_INTERVAL_MS = 1000;
 const HISTORY_INTERVAL_MS = 2000;
@@ -46,7 +47,9 @@ export default function App() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'sensors'>('telemetry');
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  // P4: flip to '3d' default now that all visuals are driven by live backend state.
+  // The 2D map remains available via the toggle in the header.
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
 
   const refreshState = useCallback(async () => {
     try {
@@ -98,7 +101,13 @@ export default function App() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {state.building?.price_response_active && (
+            <span className="text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase border-amber-500/40 bg-amber-500/15 text-amber-300 flex items-center gap-1.5 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              Price Response Active
+            </span>
+          )}
           <span className={`text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase ${
             connected
               ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
@@ -159,6 +168,7 @@ export default function App() {
                 />
               )}
             </div>
+            <DemoMacros state={state} onRefresh={refreshState} />
             <EnvironmentPanel state={state} />
             <NLPChatPanel onRefresh={refreshState} />
           </div>

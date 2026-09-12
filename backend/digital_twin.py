@@ -244,6 +244,13 @@ class BuildingTwin:
         self.history:          deque[Dict[str, Any]] = deque(maxlen=MAX_HISTORY)
         self.baseline_history: deque[Dict[str, Any]] = deque(maxlen=MAX_HISTORY)
 
+        # ── P6 building state metrics ───────────────────────────────────────
+        self.cost_today: float = 0.0
+        self.baseline_cost_today: float = 0.0
+        self._recent_powers: deque[float] = deque(maxlen=3)  # rolling 15-min window
+        self.peak_kw_15min: float = 0.0
+        self.baseline_average_comfort: float = 0.0
+
         self._baseline_twin: Optional["BuildingTwin"] = None
         self._snapshot_and_record()
 
@@ -403,6 +410,8 @@ class BuildingTwin:
         # Collect OLD T_air values before any updates (explicit Euler — prevents
         # a room's new temperature from affecting its neighbor in the same step).
         old_air_temps = {rid: s.temperature_c for rid, s in self._states.items()}
+        step_energy_total: float = 0.0
+        step_power_total: float = 0.0
 
         for room_id, state in self._states.items():
             cfg = self._configs[room_id]
@@ -445,6 +454,8 @@ class BuildingTwin:
             # 3h. Energy increment: |HVAC power| + fan power [kWh]
             total_power = abs(hvac_power) + fan_power
             energy_inc  = compute_energy_increment(total_power, self.step_minutes)
+            step_energy_total += energy_inc
+            step_power_total  += total_power
 
             # 3i. Apply all state updates atomically
             state.temperature_c         = new_t_air
@@ -459,15 +470,28 @@ class BuildingTwin:
             state.overall_comfort_score = overall_comfort_score(score, iaq)
             state.energy_kwh           += energy_inc
 
+        # P6: accumulate cost and 15-min rolling power
+        self.cost_today += step_energy_total * self.electricity_price_per_kwh
+        self._recent_powers.append(step_power_total)
+        self.peak_kw_15min = max(self._recent_powers) if self._recent_powers else step_power_total
+
         # ── Step 4: advance simulation clock ─────────────────────────
         self.simulation_time_minutes += self.step_minutes
 
         # ── Step 5: baseline twin ─────────────────────────────────────
         if self._baseline_twin is not None:
+            prev_base_energy = sum(s.energy_kwh for s in self._baseline_twin._states.values())
             for rid in self._baseline_twin._states:
                 sp = get_baseline_setpoint(self._baseline_twin.simulation_time_minutes)
                 self._baseline_twin._states[rid].setpoint_c = sp
             self._baseline_twin.step()
+            new_base_energy = sum(s.energy_kwh for s in self._baseline_twin._states.values())
+            base_energy_inc = max(0.0, new_base_energy - prev_base_energy)
+            self.baseline_cost_today += base_energy_inc * self.electricity_price_per_kwh
+            if self._baseline_twin._states:
+                self.baseline_average_comfort = sum(
+                    s.comfort_score for s in self._baseline_twin._states.values()
+                ) / len(self._baseline_twin._states)
 
         # ── Step 6: snapshot ──────────────────────────────────────────
         return self._snapshot_and_record()
@@ -479,6 +503,11 @@ class BuildingTwin:
         self._states = _make_states(configs=self._configs)
         self.history.clear()
         self.baseline_history.clear()
+        self.cost_today = 0.0
+        self.baseline_cost_today = 0.0
+        self._recent_powers.clear()
+        self.peak_kw_15min = 0.0
+        self.baseline_average_comfort = 0.0
         self._baseline_twin = self._create_baseline_twin()
         self._snapshot_and_record()
 
@@ -570,7 +599,7 @@ class BuildingTwin:
             for s in self._baseline_twin._states.values():
                 baseline_energy += s.energy_kwh
 
-        cost = compute_cost(total_energy, self.electricity_price_per_kwh)
+        cost = self.cost_today if self.cost_today > 0 else compute_cost(total_energy, self.electricity_price_per_kwh)
 
         return {
             "simulation_time_minutes":   self.simulation_time_minutes,
@@ -578,11 +607,16 @@ class BuildingTwin:
             "electricity_price_per_kwh": self.electricity_price_per_kwh,
             "rooms": rooms_data,
             "building": {
-                "total_energy_kwh":    round(total_energy,    4),
-                "baseline_energy_kwh": round(baseline_energy, 4),
-                "current_power_kw":    round(total_power,     3),
-                "average_comfort":     round(avg_comfort,     1),
-                "estimated_cost":      round(cost,            2),
+                "total_energy_kwh":         round(total_energy,    4),
+                "baseline_energy_kwh":      round(baseline_energy, 4),
+                "current_power_kw":         round(total_power,     3),
+                "average_comfort":          round(avg_comfort,     1),
+                "estimated_cost":           round(cost,            2),
+                "current_price":            round(self.electricity_price_per_kwh, 2),
+                "cost_today":               round(self.cost_today, 2),
+                "baseline_cost_today":      round(self.baseline_cost_today, 2),
+                "peak_kw_15min":            round(self.peak_kw_15min, 3),
+                "baseline_average_comfort": round(self.baseline_average_comfort, 1),
             },
         }
 
@@ -604,8 +638,13 @@ class BuildingTwin:
                 }
                 for rid, data in snap["rooms"].items()
             },
-            "total_energy_kwh":    snap["building"]["total_energy_kwh"],
-            "baseline_energy_kwh": snap["building"]["baseline_energy_kwh"],
+            "total_energy_kwh":         snap["building"]["total_energy_kwh"],
+            "baseline_energy_kwh":      snap["building"]["baseline_energy_kwh"],
+            "cost":                     round(self.cost_today, 2),
+            "baseline_cost":            round(self.baseline_cost_today, 2),
+            "peak_kw_15min":            round(self.peak_kw_15min, 3),
+            "baseline_average_comfort": round(self.baseline_average_comfort, 1),
+            "electricity_price":        round(self.electricity_price_per_kwh, 2),
         }
         self.history.append(hist_point)
         return snap

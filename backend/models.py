@@ -141,6 +141,14 @@ class BuildingSummaryResponse(BaseModel):
     current_power_kw: float
     average_comfort: float
     estimated_cost: float
+    current_price: Optional[float] = 0.0
+    cost_today: Optional[float] = 0.0
+    baseline_cost_today: Optional[float] = 0.0
+    peak_kw_15min: Optional[float] = 0.0
+    baseline_average_comfort: Optional[float] = 0.0
+    price_response_active: Optional[bool] = False
+    is_peak: Optional[bool] = False
+    is_pre_peak: Optional[bool] = False
 
 
 class SimulationStateResponse(BaseModel):
@@ -160,6 +168,13 @@ class HistoryPointResponse(BaseModel):
     rooms: Dict[str, Dict[str, float]]   # room_id → {metric: value}
     total_energy_kwh: float
     baseline_energy_kwh: float
+    cost: Optional[float] = 0.0
+    baseline_cost: Optional[float] = 0.0
+    peak_kw_15min: Optional[float] = 0.0
+    baseline_average_comfort: Optional[float] = 0.0
+    electricity_price: Optional[float] = 0.0
+    is_peak: Optional[bool] = False
+    is_pre_peak: Optional[bool] = False
 
 
 class HistoryResponse(BaseModel):
@@ -174,3 +189,57 @@ class MessageResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     success: bool = False
+
+
+# ── P5 — Constraint lifecycle response models (MASTER_PROMPT_3D §2.2) ─────────
+
+class ConstraintRecordResponse(BaseModel):
+    """One constraint event (active, resolved, renewed, or escalated)."""
+    id: str
+    room: str
+    action: str
+    source: str                           # "nlp" | "iaq_rule"
+    urgency: str
+    status: str                           # "active" | "resolved" | "renewed" | "escalated"
+    created_at: float                     # simulation minutes
+    expires_at: float
+    resolved_at: Optional[float] = None
+    resolution_mins: Optional[float] = None
+    llm_raw_delta: float                  # delta as provided by caller
+    applied_delta: float                  # physics-derived delta (§2.3)
+    renewals: int = 0
+
+
+class ConstraintStatsResponse(BaseModel):
+    by_status: Dict[str, int]
+    median_resolution_minutes: Optional[float] = None
+    total: int
+
+
+class ConstraintListResponse(BaseModel):
+    constraints: list[ConstraintRecordResponse]
+    stats: ConstraintStatsResponse
+
+
+class ConstraintReactRequest(BaseModel):
+    helpful: bool = Field(..., description="Did the HVAC response feel helpful?")
+
+
+# ── P6 — TOU Tariff models (MASTER_PROMPT_3D §2.4) ────────────────────────────
+
+class TariffSlotModel(BaseModel):
+    from_h: int = Field(..., ge=0, le=24, description="Start hour (0-23)")
+    to_h: int = Field(..., ge=0, le=24, description="End hour (1-24)")
+    price: float = Field(..., gt=0, description="Price in INR/kWh")
+    is_peak: Optional[bool] = False
+
+
+class TariffRequest(BaseModel):
+    slots: list[TariffSlotModel]
+
+
+class TariffResponse(BaseModel):
+    slots: list[TariffSlotModel]
+    current_price: float
+    is_peak: bool
+    is_pre_peak: bool

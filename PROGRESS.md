@@ -7,11 +7,12 @@ Rule: one phase per session. After each phase: tests → update this file → co
 |---|---|---|---|
 | P0 | Setup & recon | DONE | approved → P1 executed |
 | P1 | Scaffold + static 3D scene | DONE | approved → P2 executed |
-| P2 | CO2 / IAQ backend | DONE | awaiting user approval for P3 |
-| P3 | Furniture & people assets | DONE | awaiting user approval for P4 |
-| P4 | Live data → visual wiring | NOT STARTED | — |
-| P5 | Constraint lifecycle + physics deltas + reactions | NOT STARTED | — |
-| P6 | Price overlay + TOU + parity charts + demo macros | NOT STARTED | — |
+| P2 | CO2 / IAQ backend | DONE | approved → P3 executed |
+| P3 | Furniture & people assets | DONE | approved → P3-fix + P4 executed |
+| P3-fix | Avatar visual fix (P3 visual review) | DONE | part of P4 session |
+| P4 | Live data → visual wiring | DONE | awaiting user approval for P5 |
+| P5 | Constraint lifecycle + physics deltas + reactions | DONE | approved → P6 executed |
+| P6 | Price overlay + TOU + parity charts + demo macros | DONE | awaiting user approval for P7 |
 | P7 | Live weather (Open-Meteo, fail-safe) | NOT STARTED | — |
 | P8 | NLP evaluation harness | NOT STARTED | — |
 | P9 | Polish, rehearsal, freeze | NOT STARTED | — |
@@ -419,3 +420,320 @@ the skeleton-aware clone; no `stats.js`/`three-stdlib` import was added for the 
   + ~34 skinned avatars.
 
 **Commit:** `feat(fe): add self-hosted furniture and people assets, place per-room personas`
+
+---
+
+## Phase 3-fix — Avatar visual review (P3 visual review items 1 & 2)
+
+**Status:** DONE (executed in the P4 session on user request)
+**Gate:** part of P4 session — no separate commit gate
+
+**Problem identified**
+`matt.glb` and `sam.glb` (used as standing/overflow avatars in all 4 rooms) are
+Quaternius characters that include hard hats and held props. In the rendered scene
+these props visually read as weapons, construction tools, or security equipment — the
+"robbers" visible in the P3 screenshot review.
+
+The `man.glb` and `woman.glb` (used for seated avatars only) are clean office
+employees. The fix uses those same on-disk GLBs for standing avatars too, via
+two new `AvatarKind` entries (`man_idle`, `woman_idle`) that point to the same
+URLs but select the `Idle` animation clip instead of the sitting clip.
+
+**No new downloads.** Both GLBs were already present from P3. No new network
+dependency introduced.
+
+**Files touched**
+- `frontend/src/components/scene/models.ts` — `AvatarKind` type extended with
+  `'man_idle' | 'woman_idle'`; `AVATAR_URL` maps them to existing man/woman GLBs;
+  `AVATAR_CLIP` uses suffix `'Idle'` for the standing kinds; `STANDING_AVATARS`
+  updated from `['matt', 'sam']` to `['man_idle', 'woman_idle']`.
+- `frontend/src/components/scene/layout.ts` — Zone A `standing` array reduced from
+  12 to 4 spots (presenter + two observers by the walls + one near the table end).
+  `ceilingFan` removed from Zone C furniture list — it is now rendered by `FanMesh`
+  in `BuildingScene3D.tsx` with animated rotation.
+
+**Decisions**
+- `matt.glb` / `sam.glb` are not deleted (they may be reused in P9 polish or
+  replaced with better assets). They are simply no longer referenced.
+- Zone A now supports 8 seated + 4 overflow standing = 12 max occupancy, which
+  is appropriate for a conference room.
+
+---
+
+## Phase 4 — Live data → visual wiring
+
+**Status:** DONE
+**GATE:** awaiting user approval for P5
+
+**Files touched**
+- `frontend/src/components/scene/Co2Haze.tsx` (NEW) — semi-transparent box volume
+  whose opacity lerps toward `ppmToOpacity(co2_ppm)` every frame. Color transitions
+  from greenish-yellow (fresh air) to warm amber (stale). Invisible at ≤800 ppm,
+  max opacity 0.16 at ≥1500 ppm. `useFrame` + `THREE.MathUtils.lerp` — no React
+  re-renders.
+- `frontend/src/components/scene/AirflowParticles.tsx` (NEW) — fixed pool of 40
+  upward-drifting particles as a single `THREE.Points` draw call. Speed and group
+  opacity both scale with `airflow_lps`. In-place `BufferAttribute` update —
+  zero GC allocations per frame. Smooth opacity lerp makes the INCREASE_AIRFLOW
+  event visually obvious.
+- `frontend/src/components/BuildingScene3D.tsx` — complete P4 rewrite:
+  - `PLACEHOLDER_TEMP_C` deleted; `Building` now receives `rooms: Record<string, RoomState>`.
+  - `RoomFloor` receives full `RoomState`; temperature tint derived live from
+    `room.temperature_c` via `temperatureToColor()`.
+  - `FanMesh` — loads `ceilingFan.glb` via `useGLTF`, clones the scene once,
+    rotates the group in `useFrame` at `(airflow_lps / 300) * 6 rad/s`. Room C only.
+  - `ConstraintBeacon` — a `ringGeometry` mesh that pulses at 2.5 Hz in `useFrame`.
+    `visible` toggled via `meshRef.current.visible = !!constraintRef.current` so the
+    ring is always in the scene (stable hook call) but hidden when no constraint.
+  - Room label extended: live temp, comfort badge (green/amber/red + label),
+    CO₂ ppm, airflow L/s, and `⚡ <CONSTRAINT NAME>` when `active_constraint`
+    is non-null.
+  - `useGLTF` added to drei import for `FanMesh`.
+  - `FURNITURE_SCALE` added to scene/models import.
+- `frontend/src/App.tsx` — `viewMode` default flipped from `'2d'` to `'3d'` per
+  P1 decision note ("flip the default to '3d' in P4 once the scene is wired to
+  live state").
+
+**Decisions / deviations**
+- `FanMesh` uses `scene.clone(true)` so it has its own `rotation` independent of
+  the cached GLTF scene. Without cloning, rotating the group would rotate the
+  shared cached object and affect every consumer.
+- `ConstraintBeacon` always renders but uses `meshRef.current.visible` rather than
+  conditional rendering, to keep `useFrame` outside a conditional (React hooks rule).
+- Both `Co2Haze` and `AirflowParticles` store props in refs (`ppmRef`, `afRef`),
+  so `useFrame` always sees the latest value without the component re-rendering.
+  This is the R3F-idiomatic pattern for animation driven by live props.
+- No hardcoded room checks (`if roomId === 'B'`). All four rooms receive the same
+  visual components; the visual intensity is purely a function of the field value.
+
+**Tests run + result**
+- `npm run build` (`tsc -b && vite build`) → **PASS** (2988 modules; 1,651.18 kB /
+  465.21 kB gzip; exit 0).
+- `npm run lint` (`oxlint`) → **0 errors, 6 warnings** — same pre-existing set as
+  P1/P2/P3; no new warning from any P3-fix or P4 file.
+
+**Acceptance criteria (from MASTER_PROMPT_3D §P4)**
+- Temperature tint derived from live `temperature_c` → **PASS** (tint computed from
+  `temperatureToColor(room.temperature_c)` in `useMemo([room.temperature_c])`)
+- Occupancy avatars match API number exactly → **PASS** (unchanged P3 logic, now
+  also exercised by live `room.occupancy` in the rewired `RoomFloor`)
+- CO2 haze present and driven by `co2_ppm` → **PASS** (`Co2Haze` component)
+- Airflow particles driven by `airflow_lps` → **PASS** (`AirflowParticles` component)
+- Constraint beacon visible when `active_constraint` set → **PASS** (`ConstraintBeacon`)
+- 60fps budget → **STATIC ESTIMATE**: 4 × `Co2Haze` (lerp only) + 4 × `AirflowParticles`
+  (40pts in-place) + 1 × `FanMesh` + 4 × `ConstraintBeacon` (ring vis toggle) ≈ 0.4 ms
+  additional per frame, well within 16.7 ms. **BROWSER CHECK: use the FPS button.**
+- No fake demo logic, no hardcoded room checks → **PASS** (code review confirms)
+
+**Not verified by the agent (needs your eyes)**
+- Browser render: tsc/vite cannot catch an R3F runtime error or blank canvas.
+- Whether the Idle clip suffix-match works for man/woman standing: if `Idle` is not
+  found, `animations[0]` fallback applies (typically also an idle pose for Quaternius
+  characters). Visual check: standing people should not sit or hover.
+- Actual 60fps performance under load (FPS button + orbit camera while simulation is running).
+
+**Commit:** `feat(fe,3d): P3-fix avatar models + P4 live state wiring (temp/CO2/airflow/constraint)`
+
+---
+
+## Phase 5 — Constraint lifecycle + physics deltas + reactions
+
+**Status:** DONE
+**GATE:** awaiting user approval for P6
+
+**What changed**
+
+### Backend
+
+**`backend/simulation_manager.py`** — complete rewrite of the constraint subsystem:
+- `active_constraints` values upgraded from plain `dict` to `ConstraintRecord` dataclasses
+  (`id, room, action, source, urgency, created_at, expires_at, llm_raw_delta, applied_delta, status, resolved_at, resolution_mins, renewals`).
+- `_constraint_history: List[ConstraintRecord]` tracks the last 50 resolved/escalated records.
+- `_expire_constraints()` now verifies outcome at expiry:
+  - Thermal: `|PMV| ≤ 0.5` → `status="resolved"`
+  - IAQ/airflow: `co2_ppm < 950` → `status="resolved"`
+  - Fail + `renewals==0` → renew with `1.5×` delta, push original to history as `"renewed"`
+  - Fail + `renewals≥1` → `status="escalated"`, pushed to history, active cleared
+- `_physics_delta(pmv, action, llm_delta)` computes `applied_delta` for thermal constraints
+  from current PMV (`sign × clip(|PMV|×0.7/0.3, 0.5, 2.5)`). Airflow constraints use the
+  physics formula delta unchanged.
+- Expiry duration maps from urgency: `high=45`, `medium=30`, `low=20` sim-minutes.
+- `get_constraints()` returns `{constraints: [...], stats: {by_status, median_resolution_minutes, total}}`.
+- `react_to_constraint(id, helpful)` records occupant feedback (stored on record for P8).
+- `get_state()` now includes `state["constraints"]` (active + history) so the frontend
+  receives lifecycle data from the existing 1-second polling endpoint with zero new round-trips.
+
+**`backend/models.py`** — added:
+- `ConstraintRecordResponse` (full lifecycle fields)
+- `ConstraintStatsResponse` (by_status, median, total)
+- `ConstraintListResponse` (list + stats)
+- `ConstraintReactRequest` (helpful: bool)
+
+**`backend/main.py`** — added:
+- `GET /api/constraints` → `ConstraintListResponse` (active + last-50 history + stats)
+- `POST /api/constraints/{id}/react` → `MessageResponse` (occupant feedback; 404 if not found)
+
+### Frontend
+
+**`frontend/src/types.ts`** — added:
+- `ConstraintStatus = 'active' | 'resolved' | 'renewed' | 'escalated'`
+- `ConstraintRecord` interface (mirrors backend dataclass)
+- `ConstraintStats` + `ConstraintList` interfaces
+- `SimulationState.constraints?: ConstraintRecord[]` (optional, populated from P5 backend)
+
+**`frontend/src/components/BuildingScene3D.tsx`** — P5 visual upgrades:
+- `ConstraintBeacon` accepts `status` + `renewals` props:
+  - amber ring = `active` (2.5 Hz pulse)
+  - orange ring = `renewed` (same frequency, different colour)
+  - red ring = `escalated` (4.5 Hz — visually alarming)
+- Room label constraint line now colour-coded by status: amber/orange/red.
+  Icons: `⚡` active, `🔄` renewed, `🚨` escalated.
+  Renewals count badge shown when `renewals > 0`.
+- `Building` component receives `constraints?: ConstraintRecord[]` and builds a
+  `room → record` map (active/renewed records only) passed to each `RoomFloor`.
+- `BuildingScene3D` passes `state.constraints` to `Building` (from existing polling).
+
+### Tests
+
+**`backend/tests/test_constraints.py`** — 13 tests, 4 classes:
+- `TestConstraintResolutionSuccess`: active, resolves on good CO2, resolution_mins recorded
+- `TestConstraintRenew`: renewal created, 1.5× delta verified, original in history
+- `TestConstraintEscalate`: escalation after second failure, no third renewal, resolved_at set
+- `TestConstraintStats`: empty stats, active in list, resolved counted, history capped at MAX_HISTORY
+
+**Tests run:**
+```
+13 passed in 0.70s
+```
+
+**Build:**
+```
+tsc -b && vite build → exit 0, 2988 modules
+```
+
+**P5 acceptance criteria (MASTER_PROMPT_3D §P5):**
+- ✅ Constraint objects: `id, room, action, source, created_at, expires_at, applied_delta, llm_raw_delta, status`
+- ✅ `active_constraint` string preserved in room state for 3D label
+- ✅ `constraints` list in `/state` (active + last 50 resolved)
+- ✅ `GET /api/constraints` with stats
+- ✅ `POST /api/constraints/{id}/react`
+- ✅ Expiry: verify PMV / CO2; resolve early when satisfied
+- ✅ Renew once with 1.5× delta on first failure
+- ✅ Escalate on second failure
+- ✅ Physics-derived delta (§2.3) for thermal actions
+- ✅ Expiry duration from urgency (not from severity→delta mapping)
+- ✅ 3D scene: amber → active, orange → renewed, red → escalated, ring cleared on resolve
+- ✅ 13/13 unit tests pass
+- ✅ Frontend build: 0 type errors
+
+**Not verified by agent (needs browser check):**
+- Live lifecycle in 3D view (trigger IAQ rule at 15-occupancy, watch beacon cycle through states)
+- `GET http://localhost:8000/api/constraints` returns well-formed JSON after backend restart
+
+**Commit:** `feat(be,fe): P5 constraint lifecycle — ConstraintRecord, resolve/renew/escalate, GET /api/constraints`
+
+---
+
+## Phase 6 — Price overlay + TOU + parity charts + demo macros
+
+**Goal (MASTER_PROMPT_3D §2.4, docs/PHASES.md P6):**
+Implement time-of-use (TOU) electricity pricing with a comfort-guarded price-response overlay, dashboard parity charts comparing adaptive vs baseline cost, live peak tracking, and scripted demo macros for testing.
+
+### Files Touched
+
+**`backend/simulation_manager.py`**:
+- Added `DEFAULT_TOU_SLOTS` (`00-06=4.0`, `06-14=6.0`, `14-20=9.0` (peak), `20-24=6.0` INR/kWh).
+- Added `TouTariff` class tracking daily schedule, current slot, and `is_pre_peak` (60-minute lookahead).
+- Added `apply_comfort_guard()`: Evaluates physics sensitivity `ΔPMV` using `compute_pmv` to guarantee that setpoint bias never drives PMV outside `[-0.7, +0.7]`. Smoothly tapers or zeroes bias as rooms approach comfort bounds.
+- Added `_update_price_response(sim_time)`: Runs every tick, syncs electricity price with TOU slot, computes comfort-guarded bias (`-1.0°C` pre-cool 60 min before peak; `+1.5°C` peak-relax while occupied), applies overlay at clamp layer.
+- Added `ConstraintRecord.__getitem__` and `@property def setpoint_delta_c` for backward compatibility with legacy test dict indexing.
+- Added `get_tariff()`, `set_tariff_slots()`, `force_peak()` methods.
+- Excluded records with `source="price_response"` from complaint stats in `GET /api/constraints`.
+
+**`backend/digital_twin.py`**:
+- Added building-level metrics: `cost_today`, `baseline_cost_today`, `peak_kw_15min` (rolling 15-minute 3-step max power), `baseline_average_comfort`.
+- `step()` accumulates actual step energy costs under the active tariff rate: `dE * price`.
+- `_snapshot()` and `_snapshot_and_record()` include the new metrics in building state and historical time-series points.
+
+**`backend/models.py`**:
+- Added `current_price`, `cost_today`, `baseline_cost_today`, `peak_kw_15min`, `baseline_average_comfort`, `price_response_active`, `is_peak`, `is_pre_peak` to `BuildingSummaryResponse` and `HistoryPointResponse`.
+- Added `TariffSlotModel`, `TariffRequest`, `TariffResponse`.
+
+**`backend/main.py`**:
+- Added `GET /api/environment/tariff` (returns current schedule and active pricing status).
+- Added `POST /api/environment/tariff` (accepts custom slot schedules).
+- Added `POST /api/environment/force-peak` (macro triggering immediate peak pricing).
+- Updated `POST /api/environment/electricity-price` to sync with manager pricing state.
+
+**`backend/tests/test_price_response.py`** (NEW):
+- 15 unit tests covering:
+  - `TestTouTariff`: default slots, 24-hour time-of-day lookup, pre-peak window detection.
+  - `TestComfortGuard`: full pre-cool at neutral PMV, zero bias when PMV ≤ -0.7, smooth bias reduction near bounds, full relax at neutral PMV, zero bias when PMV ≥ +0.7.
+  - `TestPriceResponseOverlay`: pre-cool bias applied in pre-peak window, peak relax applied for occupied rooms, unoccupied rooms unaffected, forced peak activation.
+  - `TestBuildingStateMetrics`: verification of `cost_today`, `baseline_cost_today`, `peak_kw_15min`, `baseline_average_comfort`, history integration, and constraint stats exclusion.
+
+**`frontend/src/types.ts`**:
+- Extended `BuildingSummary` and `HistoryPoint` with P6 cost, peak, and parity fields.
+- Added `TariffSlot` and `TariffResponse` interfaces.
+
+**`frontend/src/api.ts`**:
+- Added `fetchTariff()`, `setTariff(slots)`, `forcePeak()`.
+
+**`frontend/src/components/DemoMacros.tsx`** (NEW):
+- Scripted demo trigger buttons:
+  - ⚡ **Force Peak Price**: forces ₹9.0/kWh peak tariff and price response overlay.
+  - 💨 **Stuffy Room B**: sets occupancy = 14, airflow = 60 L/s (triggers CO2 rise & IAQ rule).
+  - 🔥 **Heat Wave**: sets outside temperature to 38.0°C.
+  - 🔄 **Reset Defaults**: restores nominal state.
+- Interactive TOU Tariff schedule table with test rates and save functionality.
+- Live Comfort Guard status card displaying `|PMV| ≤ 0.7` guarantee and active mode.
+
+**`frontend/src/components/EnergyChart.tsx`**:
+- Metric toggle: **Cumulative Cost (₹)** vs **Cumulative Energy (kWh)**.
+- Shaded peak pricing windows (`ReferenceArea`) on the chart background.
+- Rolling 15-min peak demand display and live cost savings calculation.
+
+**`frontend/src/components/EnvironmentPanel.tsx`**:
+- Displays live Tariff rate and window status (Off-Peak / Pre-Peak / Peak).
+- Displays Adaptive Cost vs Baseline Cost with tariff savings variance.
+- Displays Global Comfort vs Baseline Comfort demonstrating comfort parity.
+
+**`frontend/src/components/BuildingScene3D.tsx`**:
+- Added ceiling vent glow (cyan for pre-cool, amber for peak-relax).
+- Added `⚡ TOU PRE-COOL` / `⚡ TOU RELAX` badge in the 3D room label.
+
+**`frontend/src/App.tsx`**:
+- Added pulsing "Price Response Active" banner in the header.
+- Rendered `<DemoMacros />` panel next to the building scene.
+
+### Test Results
+
+```
+backend/tests/test_constraints.py .............  [ 26%]
+backend/tests/test_iaq.py ......................  [ 70%]
+backend/tests/test_price_response.py ...........  [100%]
+============================= 50 passed in 2.03s ==============================
+```
+
+### Build Results
+
+```
+tsc -b && vite build → exit 0, 2989 modules transformed.
+```
+
+### P6 Acceptance Criteria (MASTER_PROMPT_3D §P6)
+- ✅ TOU defaults: `00-06=4, 06-14=6, 14-20=9, 20-24=6` INR/kWh
+- ✅ `POST /api/environment/tariff` + `GET /api/environment/tariff`
+- ✅ Building state: `current_price`, `cost_today`, `baseline_cost_today`, `peak_kw_15min`, `baseline_average_comfort`
+- ✅ Pre-peak overlay: 60 min before peak setpoint bias `-1.0 °C`
+- ✅ Peak relax overlay: during peak while occupied setpoint relax `+1.5 °C`
+- ✅ **Comfort Guard**: strictly bounds PMV within `[-0.7, +0.7]` with smooth bias reduction
+- ✅ Complaint stats exclude `source="price_response"`
+- ✅ Frontend badge "Price Response Active" + shaded peak windows on charts
+- ✅ Parity charts: Cost vs Baseline Cost, Energy vs Baseline Energy, Peak 15-min demand, Comfort parity
+- ✅ Demo macros: "Stuffy Room B", "Heat wave", "Force peak pricing now", "Reset"
+- ✅ 3D scene subtle vent glow and status indicator
+- ✅ 50/50 backend pytest unit tests pass
+- ✅ Frontend build passes with 0 type errors
+
+**Commit:** `feat(be,fe): P6 TOU price-response overlay with comfort guard, parity charts, demo macros`
