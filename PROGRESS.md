@@ -931,6 +931,25 @@ tools/nlp_eval.py → 45/45 passed (100.0% accuracy, 100.0% OOS rejection).
 - ✅ Frontend build passes with 0 type errors
 - ✅ Codebase frozen for demo
 
-**Commit:** `chore: polish 3D scene, clean up UI icons/theme/typography, freeze for demo`
+### Live Groq API Verification & Benchmark
+
+- Loaded user Groq API key into `.env` (`GROQ_API_KEY=gsk_...`, properly gitignored).
+- Configured model to `openai/gpt-oss-120b` (fully supported by key quota & permissions).
+- Auto-reloaded Uvicorn backend server with dynamic dotenv loading.
+- Evaluated all 45 test cases live against Groq (`tools/nlp_eval.py --mode live`):
+  - **Overall Intent Accuracy:** 100.0% (45/45)
+  - **Room Resolution Accuracy:** 100.0% (45/45)
+  - **Out-of-Scope Rejection Target:** 100.0% (8/8)
+  - **Runtime:** 312.37s
+- Verified live chat endpoint (`POST /api/chat/message`) via backend runtime:
+  - *"Conference room is freezing cold"* → Applied high urgency `increase_temp` (+3.0°C) to Room A.
+  - *"Can someone fix the paper jam in printer 2?"* → Rejected with 0.99 confidence (`none` action, 0 delta).
+  - *"Engineering is basically an arctic expedition right now"* → Sarcastic prompt correctly mapped to Room B `increase_temp`.
+
+**Commits:**
+- `67754e0` — `feat(tools): NLP evaluation harness with labeled cases and report`
+- `06d1185` — `chore: polish 3D scene, clean up UI icons/theme/typography, freeze for demo`
+- `747f59d` — `feat(nlp): configure live Groq integration with dotenv loading and record live eval benchmark`
+
 
 
