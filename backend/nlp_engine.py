@@ -13,10 +13,18 @@ from typing import Any, Dict
 
 from groq import Groq
 
-# Hardcoded for the hackathon as requested
-_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+def _get_client() -> Groq:
+    return Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+
+_client = _get_client()
+
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # ──────────────────────────────────────────────
 # Prompt helpers
@@ -136,8 +144,10 @@ def parse_complaint(complaint: str, state: Dict[str, Any]) -> Dict[str, Any]:
     user_message = _USER_TEMPLATE.format(complaint=complaint)
 
     try:
-        response = _client.chat.completions.create(
-            model=MODEL,
+        client = _get_client()
+        active_model = os.getenv("GROQ_MODEL", MODEL)
+        response = client.chat.completions.create(
+            model=active_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},

@@ -18,8 +18,14 @@ Endpoints:
   POST /api/constraints/{id}/react         (P5)
 """
 from __future__ import annotations
-
+import os
 from contextlib import asynccontextmanager
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
