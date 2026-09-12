@@ -6,16 +6,24 @@
 //   ----------------------------
 //   C Server     | D Reception
 //
-// P1 scope: geometry, lighting and orbit camera only. All room values are
-// HARDCODED placeholders (PLACEHOLDER_TEMP_C) — P4 replaces them with the
-// polled `state` prop. Props mirror BuildingMap so App.tsx can toggle views.
+// P1 built the shell (slabs, low walls, glass partitions, orbit camera).
+// P3 adds the self-hosted assets: furniture placed per persona and occupant avatars,
+// both from frontend/public/models/ (see CREDITS.md). Anything model-driven renders
+// inside its own <Suspense>, so the room shells appear immediately on a cold cache.
+//
+// Still placeholder-driven: temperature tint, comfort indicator, CO2 haze, fan spin
+// and the constraint beacon belong to P4.
 
-import { useMemo, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, memo, useCallback, useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { Grid, Html, OrbitControls, useCursor } from '@react-three/drei';
 import * as THREE from 'three';
 import type { SimulationState, RoomId } from '../types';
 import { temperatureToColor } from '../utils/temperatureColor';
+import { FURNITURE_URL, PERSONA, SEATED_AVATARS, STANDING_AVATARS } from './scene/models';
+import { ROOM_SCENE } from './scene/layout';
+import InstancedModel from './scene/InstancedModel';
+import Avatars, { type AvatarSpec } from './scene/Avatars';
 
 interface Props {
   state: SimulationState;
@@ -34,11 +42,11 @@ const WALL_T = 0.16;
 const BUILDING_W = ROOM_W * 2 + GAP;
 const BUILDING_D = ROOM_D * 2 + GAP;
 
-const LAYOUT: Record<RoomId, { col: 0 | 1; row: 0 | 1; persona: string }> = {
-  A: { col: 0, row: 0, persona: 'Conference' },
-  B: { col: 1, row: 0, persona: 'Engineering' },
-  C: { col: 0, row: 1, persona: 'Server Room' },
-  D: { col: 1, row: 1, persona: 'Reception' },
+const LAYOUT: Record<RoomId, { col: 0 | 1; row: 0 | 1 }> = {
+  A: { col: 0, row: 0 },
+  B: { col: 1, row: 0 },
+  C: { col: 0, row: 1 },
+  D: { col: 1, row: 1 },
 };
 
 // P1 placeholders — P4 swaps these for state.rooms[roomId].temperature_c.
@@ -47,19 +55,63 @@ const PLACEHOLDER_TEMP_C: Record<RoomId, number> = { A: 22.4, B: 27.6, C: 21.3, 
 const colX = (col: number) => (col - 0.5) * (ROOM_W + GAP);
 const rowZ = (row: number) => (row - 0.5) * (ROOM_D + GAP);
 
+const RoomContents = memo(function RoomContents({
+  roomId,
+  occupancy,
+}: {
+  roomId: RoomId;
+  occupancy: number;
+}) {
+  const scene = ROOM_SCENE[roomId];
+
+  // Seats first, then overflow standing spots: the avatar count always equals the
+  // room's live `occupancy` (up to the number of places defined for the room). Seated
+  // people use the rigs that ship a sitting clip, standers use the idle-only rigs.
+  const avatars = useMemo<AvatarSpec[]>(() => {
+    const capacity = scene.seats.length + scene.standing.length;
+    const total = Math.max(0, Math.min(Math.round(occupancy), capacity));
+    const seated = Math.min(total, scene.seats.length);
+
+    const specs: AvatarSpec[] = scene.seats.slice(0, seated).map((place, index) => ({
+      kind: SEATED_AVATARS[index % SEATED_AVATARS.length],
+      ...place,
+    }));
+
+    for (let index = 0; index < total - seated; index += 1) {
+      specs.push({
+        kind: STANDING_AVATARS[index % STANDING_AVATARS.length],
+        ...scene.standing[index],
+      });
+    }
+
+    return specs;
+  }, [scene, occupancy]);
+
+  return (
+    <>
+      {scene.furniture.map(({ kind, placements }) => (
+        <InstancedModel key={kind} url={FURNITURE_URL[kind]} placements={placements} />
+      ))}
+      <Avatars specs={avatars} />
+    </>
+  );
+});
+
 function RoomFloor({
   roomId,
+  occupancy,
   selected,
   onSelect,
 }: {
   roomId: RoomId;
+  occupancy: number;
   selected: boolean;
   onSelect: (room: RoomId) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   useCursor(hovered);
 
-  const { col, row, persona } = LAYOUT[roomId];
+  const { col, row } = LAYOUT[roomId];
   const tempC = PLACEHOLDER_TEMP_C[roomId];
 
   // Same palette as the 2D map: the CSS hsl() string parses straight into THREE.Color.
@@ -100,6 +152,10 @@ function RoomFloor({
         <lineBasicMaterial color={selected ? '#38bdf8' : hovered ? '#475569' : '#334155'} />
       </lineSegments>
 
+      <Suspense fallback={null}>
+        <RoomContents roomId={roomId} occupancy={occupancy} />
+      </Suspense>
+
       <Html
         center
         distanceFactor={16}
@@ -111,7 +167,9 @@ function RoomFloor({
           <span className="text-[11px] font-bold uppercase tracking-widest text-slate-200">
             Zone {roomId}
           </span>
-          <span className="text-[10px] font-medium tracking-wide text-slate-400">{persona}</span>
+          <span className="text-[10px] font-medium tracking-wide text-slate-400">
+            {PERSONA[roomId]}
+          </span>
           <span className="text-[10px] font-semibold text-slate-300">{tempC.toFixed(1)}°C</span>
         </div>
       </Html>
@@ -158,9 +216,11 @@ function GlassPartition({
 }
 
 function Building({
+  occupancies,
   selectedRoom,
   onSelect,
 }: {
+  occupancies: Record<string, number>;
   selectedRoom: RoomId;
   onSelect: (room: RoomId) => void;
 }) {
@@ -173,11 +233,12 @@ function Building({
       </mesh>
 
       {/* Room floors (2x2 grid) */}
-      {(['A', 'B', 'C', 'D'] as RoomId[]).map((rid) => (
+      {(['A', 'B', 'C', 'D'] as RoomId[]).map((roomId) => (
         <RoomFloor
-          key={rid}
-          roomId={rid}
-          selected={selectedRoom === rid}
+          key={roomId}
+          roomId={roomId}
+          occupancy={occupancies[roomId] ?? 0}
+          selected={selectedRoom === roomId}
           onSelect={onSelect}
         />
       ))}
@@ -195,9 +256,65 @@ function Building({
   );
 }
 
-export default function BuildingScene3D({ selectedRoom, onSelect }: Props) {
+// Dev aid: an FPS readout the reviewer can watch while orbiting. Report goes through a
+// ref so the sample never re-renders the scene.
+function FrameSampler({ report }: { report: (fps: number) => void }) {
+  const frames = useRef(0);
+  const elapsed = useRef(0);
+
+  useFrame((_, delta) => {
+    frames.current += 1;
+    elapsed.current += delta;
+    if (elapsed.current >= 1) {
+      report(Math.round(frames.current / elapsed.current));
+      frames.current = 0;
+      elapsed.current = 0;
+    }
+  });
+
+  return null;
+}
+
+export default function BuildingScene3D({ state, selectedRoom, onSelect }: Props) {
+  const [showPerf, setShowPerf] = useState(false);
+  const fpsLabel = useRef<HTMLSpanElement>(null);
+
+  const report = useCallback((fps: number) => {
+    if (fpsLabel.current) fpsLabel.current.textContent = `${fps} fps`;
+  }, []);
+
+  const occupancies = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const [roomId, room] of Object.entries(state.rooms ?? {})) {
+      map[roomId] = room.occupancy;
+    }
+    return map;
+  }, [state.rooms]);
+
   return (
-    <div className="w-full aspect-[7/5] rounded-lg overflow-hidden border border-slate-700/50 bg-slate-950">
+    <div className="relative w-full aspect-[7/5] rounded-lg overflow-hidden border border-slate-700/50 bg-slate-950">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+        {showPerf && (
+          <span
+            ref={fpsLabel}
+            className="rounded-md border border-white/10 bg-slate-950/80 px-2 py-1 text-[11px] font-semibold tabular-nums text-emerald-300"
+          >
+            — fps
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowPerf((on) => !on)}
+          className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors ${
+            showPerf
+              ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
+              : 'border-white/10 bg-slate-950/80 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          FPS
+        </button>
+      </div>
+
       <Canvas shadows dpr={[1, 2]} camera={{ position: [8.5, 7.5, 10.5], fov: 40 }}>
         <color attach="background" args={['#070c17']} />
 
@@ -215,7 +332,7 @@ export default function BuildingScene3D({ selectedRoom, onSelect }: Props) {
           shadow-camera-far={40}
         />
 
-        <Building selectedRoom={selectedRoom} onSelect={onSelect} />
+        <Building occupancies={occupancies} selectedRoom={selectedRoom} onSelect={onSelect} />
 
         <Grid
           position={[0, -SLAB_H - 0.19, 0]}
@@ -237,6 +354,8 @@ export default function BuildingScene3D({ selectedRoom, onSelect }: Props) {
           maxDistance={32}
           maxPolarAngle={Math.PI / 2.3}
         />
+
+        {showPerf && <FrameSampler report={report} />}
       </Canvas>
     </div>
   );

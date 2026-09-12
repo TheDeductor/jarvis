@@ -8,7 +8,7 @@ Rule: one phase per session. After each phase: tests → update this file → co
 | P0 | Setup & recon | DONE | approved → P1 executed |
 | P1 | Scaffold + static 3D scene | DONE | approved → P2 executed |
 | P2 | CO2 / IAQ backend | DONE | awaiting user approval for P3 |
-| P3 | Furniture & people assets | NOT STARTED | — |
+| P3 | Furniture & people assets | DONE | awaiting user approval for P4 |
 | P4 | Live data → visual wiring | NOT STARTED | — |
 | P5 | Constraint lifecycle + physics deltas + reactions | NOT STARTED | — |
 | P6 | Price overlay + TOU + parity charts + demo macros | NOT STARTED | — |
@@ -305,3 +305,117 @@ disappeared, and `npm run build` then failed with `'tsc' is not recognized`. Fix
 - TS types mirror every new Pydantic field → **PASS** (`tsc -b`)
 
 **Commit:** `feat(be): add CO2/IAQ state, iaq_score, and IAQ-driven airflow rule`
+
+---
+
+## Phase 3 — Furniture & people assets
+
+**Status:** DONE
+**GATE:** awaiting user approval for P4
+
+**Files touched**
+- `frontend/public/models/furniture/*.glb` (NEW, 17 files, 195 KB) — extracted from the Kenney kit.
+- `frontend/public/models/people/*.glb` (NEW, 4 files, 3.2 MB) — Quaternius rigs, as published.
+- `frontend/src/components/scene/models.ts` (NEW) — asset registry: URLs, `FURNITURE_SCALE`,
+  avatar→clip map, seated/standing avatar assignment, persona labels, `Placement` / `Seat` types.
+- `frontend/src/components/scene/layout.ts` (NEW) — all 71 placements + 12 seat and 47 overflow
+  standing spots, in room-local metres.
+- `frontend/src/components/scene/InstancedModel.tsx` (NEW) — per-primitive `InstancedMesh` renderer.
+- `frontend/src/components/scene/Avatars.tsx` (NEW) — skinned clones + one `useFrame` for all mixers.
+- `frontend/src/components/BuildingScene3D.tsx` — renders `RoomContents` (furniture + avatars) per
+  room inside its own `<Suspense>`; adds an opt-in FPS readout.
+- `CREDITS.md` (NEW, repo root) — per-file attribution and licences.
+
+**Dependencies added:** none. Phase 3 is asset-and-code only, so §6 needs no new justification
+entry. `three/examples/jsm/utils/SkeletonUtils.js` (bundled with the already-pinned `three`) supplies
+the skeleton-aware clone; no `stats.js`/`three-stdlib` import was added for the FPS readout — it is
+~15 lines of `useFrame` and a ref, writing to a DOM node so the sample never re-renders the scene.
+
+**Asset sourcing (this was the slow part of the phase)**
+- Kenney kit: `kenney.nl/media/pages/assets/furniture-kit/440e0608a4-1677580847/kenney_furniture-kit.zip`
+  (CC0, includes the licence text). 17 of the 140 models were extracted, not the whole kit.
+- Quaternius people: his own site now routes packs through itch.io/Patreon and ships FBX/OBJ/Blend
+  (no glTF), and `api.poly.pizza` returns 401 without an account, so the models were taken from the
+  **public model pages** on poly.pizza (`/m/<id>`), which expose a direct `static.poly.pizza/*.glb`.
+  Both are listed as sanctioned sources in the spec; licences are recorded in `CREDITS.md`.
+
+**Discoveries that shaped the code (all measured, not assumed)**
+- Kenney models are authored at **~0.5 m per unit** (a desk is 0.384 units tall) → `FURNITURE_SCALE = 2`.
+- Kenney models put the **origin on a footprint corner**, not the centre. `InstancedModel` therefore
+  measures each model's bounds once and re-centres X/Z with the base at `y = 0`, so a placement reads
+  as "put this here, standing on the floor" instead of carrying 17 hand-copied offsets.
+- All assets face **+Z**: chair backrests and avatar toe bones both sit at −Z, and rotations are
+  derived from that.
+- The people are **rigged/skinned** (1-6 `SkinnedMesh` per model, 10-20 clips), so they cannot use
+  `InstancedMesh`. They are `SkeletonUtils.clone()`d with one `AnimationMixer` each, all advanced from
+  a single `useFrame`. Instancing is applied where the spec asks for it — the static furniture.
+- The four rigs are published at **wildly different unit scales** (bone spans 0.90, 0.91, 4.23, 5.16).
+  Rather than hardcode four magic numbers, the bone span is measured at load and scaled to 1.5 m
+  (a ~1.75 m adult's ankle→head-joint span), which is self-correcting if an asset is ever swapped.
+- The people clips are exported **with a prefix** (`HumanArmature|Man_Sitting`, `Armature|SitIdle`,
+  `CharacterArmature|Idle`), so the clip lookup matches on suffix.
+- Only `man`/`woman` ship a seated clip → they take the seats; `matt`/`sam` are idle-only → they take
+  the overflow standing spots.
+
+**Bugs found by verification before any browser was involved**
+1. **Desk scale double-converted** — `DESK_SCALE` contained `FURNITURE_SCALE` *and* `scaleOf()`
+   multiplied by it again, making every desk 2.35 m wide and 1.54 m tall. Caught by the collision
+   check (`desk overlaps desk` in room B). Now `[0.8, 1, 0.875]` → 1.17 × 0.77 × 0.69 m.
+2. **Reception chair clipped the counter** — the counter is deeper (0.94 m) than a desk, so the chair
+   overlapped it by 8 cm. Counter moved to z = −1.2; chair clearance is now 6.6 cm.
+3. **People standing inside furniture** — the B overflow spots at x = ±2.6 sat inside the bookcase and
+   bin, and one D spot sat inside the lounge chair. Spots moved; 0 problems remain.
+4. **Wrong animation** — the clip lookup missed the prefixed names and silently fell through to
+   `animations[0]`, so every `man` avatar would have stood in the conference room **clapping**. The
+   fallback is what made it silent; the lookup now matches on suffix and the verifier asserts the
+   resolved clip name.
+
+**Verification (headless, reproducible — no browser needed)**
+- Compiled `layout.ts` + `models.ts` with `tsc --ignoreConfig`, then ran a Node harness that imports
+  the real modules, loads the real `.glb` files through the real `GLTFLoader`, and replays the
+  component's normalisation maths for **every** placement:
+  - **17/17** furniture models load; **71/71** placements have finite, non-degenerate bounds, base
+    within 2 cm of the floor and the footprint centred on the requested point.
+  - **0** wall breaches, **0** furniture overlaps, **0** people inside furniture (71 placements,
+    12 seats, 47 overflow spots across 4 rooms).
+  - **4/4** avatars load, have bones + `SkinnedMesh`, resolve the intended clip, and auto-scale to
+    1.50 m bone span (raw scales 0.355 / 0.291 / 1.661 / 1.653).
+  - Sizes spot-checked against hand maths: desk 1.175 × 0.769 × 0.687 m, conference table
+    2.301 × 0.695 × 1.208 m, counter 3.232 × 0.769 × 0.942 m, rack 0.800 × 1.975 × 0.500 m.
+- `npm run build` (`tsc -b && vite build`) → **PASS** (2986 modules; 1,648.00 kB / 464.17 kB gzip).
+- `npm run lint` (`oxlint`) → **0 errors, 6 warnings** — the same pre-existing set as P1/P2; no new
+  file contributes a warning.
+- Dev server: all **21/21** model URLs return 200 with byte-exact content.
+- `dist/` contains all 21 models, so the production build is self-contained (no runtime fetch).
+
+**Perf budget (measured statically, since the frame rate itself needs your eyes)**
+- Furniture is 52 draw calls for 71 placements — one `InstancedMesh` per primitive per model per room
+  (e.g. 8 engineering desks + 8 monitors = a handful of calls, not 40+). 4,614 triangles in the
+  instanced furniture.
+- Avatars are the expensive half (skinned): `man` carries 6 primitives, `woman` 1, `matt`/`sam` 2.
+  At the default occupancies (A8/B12/C4/D10) that is ~34 avatars.
+- An **FPS button** sits above the canvas (top-right): it samples frames once a second and writes
+  straight to a DOM node, so measuring costs nothing and never re-renders the scene.
+
+**Deliberate scope note**
+- Room occupancy **now drives the avatar count** (seated first, then standing spots), because P3's
+  stated risk is the instanced/perf pipeline and it cannot be judged at 0 avatars. P4 keeps the rest
+  of the live wiring: temperature tint, comfort indicator, CO2 haze, fan rotation, power glow,
+  constraint beacon. Avatars do not cast shadows — that would double the skinned cost for little gain.
+
+**Not verified by the agent (needs your eyes — same category as P1's blank-canvas risk)**
+- Browser render: `tsc`/vite cannot catch a R3F runtime error or a blank canvas.
+- **Avatar facing.** Derived from toe-bone geometry (+Z, same as the chairs) but never seen. If
+  seated people face away from their desks, the fix is a single term in `Avatars.tsx`.
+- Whether seated avatars sit *in* the chairs convincingly — the sit clips are authored poses and the
+  seat height is a separate number; the offset is in the `Avatars.tsx` `<group>` if it needs a nudge.
+
+**Acceptance criteria**
+- Furniture downloaded + self-hosted + placed per persona → **PASS** (17 models, 71 placements,
+  0 collisions; A Conference / B Engineering / C Server / D Reception all distinct).
+- People assets self-hosted, per-persona → **PASS** on load/rig/clip/scale; placement is per seat.
+- `useGLTF` + instancing → **PASS**. No postprocessing; lighting is still one ambient + one directional.
+- Perf measured on a mid laptop → **YOUR CHECK** (FPS button); static budget above says 52 furniture
+  + ~34 skinned avatars.
+
+**Commit:** `feat(fe): add self-hosted furniture and people assets, place per-room personas`
