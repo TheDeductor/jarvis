@@ -7,9 +7,7 @@ import {
   setRlMode,
 } from '../api';
 
-// Default policy path — points to best model from the test_run training
 const DEFAULT_MODEL_PATH = 'rl/models/test_run/best_model.zip';
-
 
 interface Props {
   running: boolean;
@@ -72,8 +70,8 @@ export default function SimulationControls({
   const isAuto = rlMode === 'auto';
 
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 space-y-5">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">
+    <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-5 space-y-5 shadow-sm">
+      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-200">
         Engine Control
       </h2>
 
@@ -82,33 +80,33 @@ export default function SimulationControls({
         <button
           disabled={busy}
           onClick={() => act(running ? pauseSimulation : startSimulation)}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2
+          className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 border shadow-sm active:scale-95
             ${running
-              ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30'
-              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}
+              ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40'
+              : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'}`}
         >
-          {running ? <><Pause size={16} /> Pause</> : <><Play size={16} /> Start</>}
+          {running ? <><Pause size={15} /> Pause</> : <><Play size={15} /> Start</>}
         </button>
         <button
           disabled={busy}
           onClick={() => act(resetSimulation)}
-          className="px-4 py-2.5 rounded-lg bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 text-sm font-semibold transition-all border border-slate-600/50 flex items-center justify-center gap-2"
+          className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold uppercase tracking-wider transition-all border border-slate-700 flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
         >
-          <RotateCcw size={16} /> Reset
+          <RotateCcw size={15} /> Reset
         </button>
       </div>
 
       {/* ── RL Auto Mode Toggle ───────────────────────────────────────── */}
       <div>
-        <p className="text-xs font-medium text-slate-400 mb-2">HVAC Control Mode</p>
+        <p className="text-xs font-semibold text-slate-200 mb-2">HVAC Control Mode</p>
         <div className="flex gap-2">
           <button
-            disabled={rlBusy || isAuto === false && busy}
+            disabled={rlBusy || (isAuto === false && busy)}
             onClick={() => handleRlToggle('manual')}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
+            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border shadow-sm ${
               !isAuto
-                ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
-                : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600'
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700'
             }`}
           >
             <User size={13} /> Manual
@@ -116,10 +114,10 @@ export default function SimulationControls({
           <button
             disabled={rlBusy}
             onClick={() => handleRlToggle('auto')}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border ${
+            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border shadow-sm ${
               isAuto
-                ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
-                : 'bg-slate-800/50 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600'
+                ? 'bg-amber-500 border-amber-400 text-slate-950 font-extrabold'
+                : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700'
             }`}
           >
             <Bot size={13} /> {rlBusy ? 'Loading…' : 'Auto AI'}
@@ -128,31 +126,31 @@ export default function SimulationControls({
 
         {/* Active indicator */}
         {isAuto && (
-          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/30">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-widest">
+            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">
               RL Agent Active — controlling all rooms
             </span>
           </div>
         )}
         {rlError && (
-          <p className="mt-1 text-[10px] text-red-400 font-medium">{rlError}</p>
+          <p className="mt-1 text-xs text-rose-300 font-semibold">{rlError}</p>
         )}
       </div>
 
       {/* Speed */}
       <div>
-        <p className="text-xs font-medium text-slate-400 mb-2">Simulated Time Speed</p>
+        <p className="text-xs font-semibold text-slate-200 mb-2">Simulated Time Speed</p>
         <div className="flex gap-2">
           {speedBtns.map((s) => (
             <button
               key={s}
               disabled={busy}
               onClick={() => act(() => setSpeed(s))}
-              className={`flex-1 py-1.5 rounded-md text-sm font-semibold transition-all border
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border shadow-sm
                 ${speed === s
-                  ? 'bg-blue-500/20 border-blue-500/50 text-blue-400'
-                  : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:bg-slate-700/50 hover:text-slate-200'}`}
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white'}`}
             >
               {s}×
             </button>
@@ -162,7 +160,7 @@ export default function SimulationControls({
 
       {/* Outside Temperature */}
       <div>
-        <p className="text-xs font-medium text-slate-400 mb-2">Outdoor Baseline Temperature</p>
+        <p className="text-xs font-semibold text-slate-200 mb-2">Outdoor Baseline Temperature</p>
         <div className="flex gap-2">
           <input
             type="number"
@@ -171,17 +169,17 @@ export default function SimulationControls({
             onKeyDown={(e) => e.key === 'Enter' && handleOutsideTemp()}
             onBlur={handleOutsideTemp}
             step={0.5}
-            className="flex-1 bg-slate-900/50 border border-slate-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 rounded-md px-3 py-1.5 text-slate-200 text-sm outline-none transition-all"
+            className="flex-1 bg-[#080e1b] border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg px-3 py-1.5 text-white font-mono text-sm outline-none transition-all font-bold"
           />
-          <span className="self-center text-slate-500 text-sm w-6">°C</span>
+          <span className="self-center text-slate-300 font-bold text-sm w-6">°C</span>
         </div>
       </div>
 
       {/* Electricity Price */}
       <div>
-        <p className="text-xs font-medium text-slate-400 mb-2">Electricity Rate</p>
+        <p className="text-xs font-semibold text-slate-200 mb-2">Electricity Rate</p>
         <div className="flex gap-2">
-          <span className="self-center text-slate-500 text-sm w-4">₹</span>
+          <span className="self-center text-slate-300 font-bold text-sm w-4">₹</span>
           <input
             type="number"
             value={priceInput}
@@ -190,15 +188,15 @@ export default function SimulationControls({
             onBlur={handlePrice}
             step={0.5}
             min={0}
-            className="flex-1 bg-slate-900/50 border border-slate-700 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 rounded-md px-3 py-1.5 text-slate-200 text-sm outline-none transition-all"
+            className="flex-1 bg-[#080e1b] border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-lg px-3 py-1.5 text-white font-mono text-sm outline-none transition-all font-bold"
           />
         </div>
       </div>
 
       {/* Status indicator */}
-      <div className="flex items-center gap-2 pt-2">
-        <span className={`w-2 h-2 rounded-full ${running ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
-        <span className="text-xs text-slate-400 font-medium tracking-wide">
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+        <span className={`w-2 h-2 rounded-full ${running ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+        <span className="text-xs text-slate-300 font-bold tracking-wider">
           {running
             ? isAuto
               ? `AI AGENT RUNNING AT ${speed}×`

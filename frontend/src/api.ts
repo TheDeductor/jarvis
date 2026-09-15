@@ -1,7 +1,7 @@
 // api.ts — All backend communication.  No physics logic lives here.
 
 import axios from 'axios';
-import type { HistoryPoint, SimulationState } from './types';
+import type { HistoryPoint, SimulationState, TariffResponse, TariffSlot } from './types';
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
 
@@ -103,5 +103,21 @@ export async function setRlMode(mode: 'manual' | 'auto', modelPath?: string) {
 export async function submitFeedback(complaint: string): Promise<any> {
   const res = await api.post('/chat/message', { message: complaint });
   return res.data;
+}
+
+// ── P6 — Tariff & Force Peak ──────────────────────────────────────────────────
+
+export async function fetchTariff(): Promise<TariffResponse> {
+  const res = await api.get<TariffResponse>('/environment/tariff');
+  return res.data;
+}
+
+export async function setTariff(slots: TariffSlot[]): Promise<TariffResponse> {
+  const res = await api.post<TariffResponse>('/environment/tariff', { slots });
+  return res.data;
+}
+
+export async function forcePeak(): Promise<void> {
+  await api.post('/environment/force-peak');
 }
 

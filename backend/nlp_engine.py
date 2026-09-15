@@ -13,10 +13,18 @@ from typing import Any, Dict
 
 from groq import Groq
 
-# Hardcoded for the hackathon as requested
-_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-MODEL = "openai/gpt-oss-120b"
+def _get_client() -> Groq:
+    return Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+
+_client = _get_client()
+
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # ──────────────────────────────────────────────
 # Prompt helpers
@@ -30,28 +38,59 @@ and translate them into structured HVAC control actions.
 CURRENT BUILDING STATE (real-time):
 {room_context}
 
-AVAILABLE ROOMS: A, B, C, D
+AVAILABLE ROOMS & ALIASES:
+- Room A: "Conference Room", "big meeting room", "boardroom", "presentation room", "main conference"
+- Room B: "Engineering", "open office", "where the devs sit", "dev pit", "developers", "engineering area"
+- Room C: "Server Room", "IT closet", "data center", "server racks", "tech room"
+- Room D: "Reception", "front desk", "lobby", "waiting area", "entrance", "front lobby"
+
 SETPOINT BOUNDS: 16°C minimum, 30°C maximum
 
 ACTIONS YOU CAN TAKE:
-- increase_temp   → raise the room setpoint (occupant feels cold/freezing/chilly)
-- decrease_temp   → lower the room setpoint (occupant feels hot/warm/stuffy/sweating)
-- increase_airflow → increase supply airflow L/s (occupant feels stuffy/stale/poor air quality)
-- decrease_airflow → decrease supply airflow L/s (occupant feels drafty/too much wind/blowing)
-- set_setpoint    → set an explicit target temperature mentioned in the complaint
-- none            → complaint noted but no actionable HVAC change needed
+- increase_temp    → raise the room setpoint (occupant feels cold/freezing/chilly/teeth chattering)
+- decrease_temp    → lower the room setpoint (occupant feels hot/warm/sweltering/boiling/sweating/sauna)
+- increase_airflow → increase supply airflow L/s (occupant feels stuffy/stale air/suffocating/poor air quality/high CO2)
+- decrease_airflow → decrease supply airflow L/s (occupant feels drafty/too much wind/blowing papers/hurricane)
+- set_setpoint     → set an explicit target temperature mentioned in the complaint/request (e.g. "set to 22°C", "set room a to 19 c")
+- set_occupancy    → set or update room occupancy / headcount / people / pax (e.g. "set occupancy in room a to 15", "10 people in conference room", "room is empty" → 0)
+- set_airflow      → set an explicit supply airflow in L/s (e.g. "set airflow in room a to 180", "set airflow to 200 L/s")
+- none             → non-actionable or out-of-scope complaint
+
+CRITICAL OUT-OF-SCOPE REJECTION RULE (TARGET 100% REJECTION):
+You ONLY manage thermal comfort, temperature, airflow, and ventilation.
+If the complaint is about ANY non-HVAC topic, including but not limited to:
+- Furniture (e.g., broken/wobbly chair, desk, table)
+- Noise / acoustics (e.g., loud talking, laughter, noisy calls)
+- Lighting / visuals (e.g., monitor glare, bright sun, flickering light bulb, blinds)
+- Refreshments / pantry (e.g., coffee machine empty, snacks, lunch, catering)
+- IT / networking / peripherals (e.g., Wi-Fi dropping, mouse battery, stuck keyboard key, printer jam)
+- Housekeeping / cleaning (e.g., spilled soda on carpet, trash, messy desks)
+YOU MUST IMMEDIATELY RETURN:
+  "room_id": null,
+  "action": "none",
+  "urgency": "low",
+  "setpoint_delta_c": 0.0,
+  "rationale": "Out of scope: complaint pertains to facilities/IT/furniture/noise, not HVAC or thermal comfort.",
+  "confidence": 0.99
+Do NOT take any HVAC action for out-of-scope issues.
 
 URGENCY RULES:
-- high   → extreme words: "freezing", "burning", "unbearable", "emergency", "cannot work"
-- medium → moderate words: "too hot", "a bit cold", "uncomfortable", "warm"
-- low    → mild words: "slightly", "a little", "maybe", "could be better"
+- high   → extreme words: "freezing", "burning", "boiling", "sweltering", "unbearable", "emergency", "cannot work", "scorching", "icebox"
+- medium → moderate words: "too hot", "a bit cold", "uncomfortable", "warm", "stuffy", "drafty"
+- low    → mild words: "slightly", "a little", "maybe", "could be better", "tiny bit"
 
 DELTA RULES:
 - For increase_temp / decrease_temp: use 1.0–4.0°C delta based on urgency
   - high urgency → 3.0–4.0°C  |  medium → 1.5–2.5°C  |  low → 1.0°C
-- For set_setpoint: setpoint_delta_c is the ABSOLUTE target temperature
-- For airflow actions: setpoint_delta_c = airflow change in L/s (positive value)
+- For set_setpoint: setpoint_delta_c is the ABSOLUTE target temperature mentioned (in °C, e.g. 19.0)
+- For set_occupancy: setpoint_delta_c is the ABSOLUTE number of occupants (e.g. 15.0, or 0.0 if empty)
+- For set_airflow: setpoint_delta_c is the ABSOLUTE target airflow in L/s (e.g. 180.0)
+- For increase_airflow / decrease_airflow: setpoint_delta_c = airflow change in L/s (positive value: 20-50 L/s)
 - For none: setpoint_delta_c = 0.0
+
+MULTILINGUAL & SARCASM:
+- Handle common sarcastic complaints (e.g., "arctic expedition" / "penguins" = freezing cold → increase_temp; "sauna" = boiling hot → decrease_temp; "hurricane" = extreme draft → decrease_airflow).
+- Accurately parse non-English complaints (e.g., Spanish, French, Hindi/Hinglish) into the target actions.
 
 RESPONSE FORMAT (return ONLY valid JSON, no markdown, no commentary):
 {{
@@ -63,7 +102,7 @@ RESPONSE FORMAT (return ONLY valid JSON, no markdown, no commentary):
   "confidence": 0.95
 }}
 
-If no specific room is mentioned, infer from context or set room_id to null (applies to all rooms).
+If no specific room is mentioned and cannot be inferred, set room_id to null.
 If complaint is ambiguous or non-actionable, use action "none".
 """
 
@@ -78,14 +117,14 @@ def _build_room_context(state: Dict[str, Any]) -> str:
         r = rooms.get(rid)
         if not r:
             continue
-        # Since PMV is not in RoomStateResponse yet, we'll estimate or omit it. 
-        # Using comfort score directly to provide context:
+        pmv_str = f", PMV={r.get('pmv', 0):.2f}" if "pmv" in r else ""
+        co2_str = f", CO2={r.get('co2_ppm', 450):.0f}ppm" if "co2_ppm" in r else ""
         lines.append(
             f"  Room {rid}: air={r.get('temperature_c', 0):.1f}°C, "
             f"setpoint={r.get('setpoint_c', 0):.1f}°C, "
             f"humidity={r.get('humidity_pct', 0):.0f}%, "
             f"airflow={r.get('airflow_lps', 0):.0f} L/s, "
-            f"occupants={r.get('occupancy', 0)}"
+            f"occupants={r.get('occupancy', 0)}{co2_str}{pmv_str}"
         )
     outside = state.get("outside_temperature_c", 34.0)
     lines.append(f"  Outside: {outside:.1f}°C")
@@ -109,16 +148,17 @@ def parse_complaint(complaint: str, state: Dict[str, Any]) -> Dict[str, Any]:
     user_message = _USER_TEMPLATE.format(complaint=complaint)
 
     try:
-        response = _client.chat.completions.create(
-            model=MODEL,
+        client = _get_client()
+        active_model = os.getenv("GROQ_MODEL", MODEL)
+        response = client.chat.completions.create(
+            model=active_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            temperature=1,
-            max_completion_tokens=1024,
+            temperature=0.2,
+            max_tokens=1024,
             top_p=1,
-            reasoning_effort="medium",
             stream=False,
             stop=None,
         )

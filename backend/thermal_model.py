@@ -28,6 +28,7 @@ UNIT CONVENTION (strictly enforced):
   energy              → kWh
   airflow             → L/s
   air speed           → m/s
+  CO2 concentration   → ppm
 """
 from __future__ import annotations
 
@@ -135,6 +136,15 @@ class RoomConfig:
     air_speed_min_ms: float = 0.05   # m/s at minimum airflow
     air_speed_max_ms: float = 0.30   # m/s at maximum airflow
 
+    # ------------------------------------------------------------------
+    # Geometry — CO2 model
+    # ------------------------------------------------------------------
+
+    # Nominal room air volume [m³]. Simulation assumption (default room).
+    # Per-room values are set in digital_twin._make_configs():
+    #   A: 80  B: 150  C: 60  D: 100   (MASTER_PROMPT_3D §2.1)
+    nominal_volume_m3: float = 100.0
+
 
 # ──────────────────────────────────────────────
 # Room state (mutable)
@@ -162,6 +172,9 @@ class RoomState:
     energy_kwh: float    = 0.0   # [kWh] accumulated
     comfort_score: float = 95.0  # [0–100]  100 − PPD
     pmv: float           = 0.0   # [-3, +3] Fanger PMV
+    co2_ppm: float = 450.0               # [ppm] indoor CO2 concentration
+    iaq_score: float = 100.0             # [0–100] CO2-based IAQ sub-score
+    overall_comfort_score: float = 96.5  # [0–100] 0.7·comfort + 0.3·IAQ
 
 
 # ──────────────────────────────────────────────
@@ -418,6 +431,89 @@ def compute_next_humidity(state: RoomState, config: RoomConfig) -> float:
     effective_target = compute_humidity_target(state, config)
     new_rh = state.humidity_pct + (effective_target - state.humidity_pct) * config.humidity_lag
     return float(np.clip(new_rh, 20.0, 80.0))
+
+
+# ──────────────────────────────────────────────
+# CO2 / IAQ model
+# ──────────────────────────────────────────────
+
+# CO2 generation rate per occupant [L/s]. Simulation assumption
+# (sedentary office occupant, ~0.005 L/s ≈ 18 L/h of CO2).
+CO2_GENERATION_LPS_PER_OCCUPANT: float = 0.005
+
+# Outdoor CO2 concentration [ppm]. Simulation assumption.
+CO2_OUTDOOR_PPM: float = 420.0
+
+# Initial indoor CO2 concentration [ppm]. Simulation assumption.
+CO2_INITIAL_PPM: float = 450.0
+
+# Numerical bounds [ppm] — clamping guards, not physics.
+CO2_MIN_PPM: float = 400.0
+CO2_MAX_PPM: float = 3000.0
+
+
+def compute_next_co2(
+    co2_ppm: float,
+    occupancy: int,
+    airflow_lps: float,
+    volume_m3: float,
+    dt_minutes: float,
+    co2_outdoor_ppm: float = CO2_OUTDOOR_PPM,
+) -> float:
+    """
+    Advance indoor CO2 concentration by one timestep — single-zone mass balance.
+
+    EQUATION (per-second rate, explicit Euler over dt):
+      dC/dt [ppm/s] = (Gocc·10⁶ + airflow·(C_outdoor − C)) / (V·1000)
+
+      Gocc    = 0.005 L/s CO2 per occupant (simulation assumption)
+      airflow = supply airflow [L/s], treated entirely as fresh air
+                (documented simplification: no recirculation/filtration term)
+      V       = nominal room volume [m³]
+
+    UNIT CHECK:
+      generation  : (L CO2/s) / (L air) × 10⁶ = ppm/s
+      ventilation : airflow [L/s] × (ppm) / (V·1000) [L] = ppm/s
+
+    Result is clamped to [CO2_MIN_PPM, CO2_MAX_PPM].
+
+    Returns
+    -------
+    float : next CO2 concentration [ppm].
+    """
+    volume_l = volume_m3 * 1000.0
+    if volume_l <= 0.0:
+        return float(np.clip(co2_ppm, CO2_MIN_PPM, CO2_MAX_PPM))
+
+    generation_ppm_lps  = CO2_GENERATION_LPS_PER_OCCUPANT * max(0, int(occupancy)) * 1e6
+    ventilation_ppm_lps = airflow_lps * (co2_outdoor_ppm - co2_ppm)
+
+    rate_ppm_per_s = (generation_ppm_lps + ventilation_ppm_lps) / volume_l
+    new_co2 = co2_ppm + rate_ppm_per_s * (dt_minutes * 60.0)
+    return float(np.clip(new_co2, CO2_MIN_PPM, CO2_MAX_PPM))
+
+
+def airflow_to_hold_co2(
+    occupancy: int,
+    target_ppm: float = 900.0,
+    co2_outdoor_ppm: float = CO2_OUTDOOR_PPM,
+) -> float:
+    """
+    Steady-state supply airflow [L/s] that holds CO2 at `target_ppm`.
+
+    At steady state (dC/dt = 0) the mass balance reduces to:
+      Gocc·10⁶ = airflow × (C_target − C_outdoor)
+      → airflow = Gocc·10⁶ / (C_target − C_outdoor)
+
+    The room volume cancels out of the steady-state balance.
+    Used to size the airflow increase for the IAQ rule (MASTER_PROMPT_3D §2.1).
+
+    Returns 0.0 when target ≤ outdoor (no airflow can reach the target).
+    """
+    if target_ppm <= co2_outdoor_ppm:
+        return 0.0
+    generation_ppm_lps = CO2_GENERATION_LPS_PER_OCCUPANT * max(0, int(occupancy)) * 1e6
+    return generation_ppm_lps / (target_ppm - co2_outdoor_ppm)
 
 
 # ──────────────────────────────────────────────

@@ -1,10 +1,11 @@
-// EnergyChart.tsx  —  Adaptive energy vs baseline over simulation time.
+// EnergyChart.tsx  —  Adaptive energy & cost vs baseline over simulation time (P6).
 // Both values come from backend — baseline is independently simulated.
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea,
 } from 'recharts';
+import { Coins, Zap } from 'lucide-react';
 import type { HistoryPoint } from '../types';
 
 interface Props {
@@ -15,64 +16,183 @@ function minutesToLabel(minutes: number): string {
   const totalMin = (480 + minutes) % 1440;
   const h = Math.floor(totalMin / 60);
   const m = Math.floor(totalMin % 60);
-  return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 }
 
 export default function EnergyChart({ history }: Props) {
+  const [metric, setMetric] = useState<'cost' | 'energy'>('cost');
+
   const data = history.map((pt) => ({
     time: minutesToLabel(pt.simulation_time_minutes),
-    adaptive: pt.total_energy_kwh,
-    baseline: pt.baseline_energy_kwh,
+    adaptiveEnergy: Number(pt.total_energy_kwh.toFixed(3)),
+    baselineEnergy: Number(pt.baseline_energy_kwh.toFixed(3)),
+    adaptiveCost: Number((pt.cost ?? (pt.total_energy_kwh * 6.0)).toFixed(2)),
+    baselineCost: Number((pt.baseline_cost ?? (pt.baseline_energy_kwh * 6.0)).toFixed(2)),
+    isPeak: Boolean(pt.is_peak),
   }));
 
+  const latest = history[history.length - 1];
+  const adaptiveCost = latest?.cost ?? (latest ? latest.total_energy_kwh * 6.0 : 0);
+  const baselineCost = latest?.baseline_cost ?? (latest ? latest.baseline_energy_kwh * 6.0 : 0);
+  const costSavings = baselineCost - adaptiveCost;
+  const savingsPct = baselineCost > 0 ? (costSavings / baselineCost) * 100 : 0;
+  const peakKw = latest?.peak_kw_15min ?? 0;
+
+  // Find continuous peak segments for chart shading
+  const peakSegments: { start: string; end: string }[] = [];
+  let currentStart: string | null = null;
+  data.forEach((d, i) => {
+    if (d.isPeak && !currentStart) {
+      currentStart = d.time;
+    } else if (!d.isPeak && currentStart) {
+      peakSegments.push({ start: currentStart, end: data[i - 1].time });
+      currentStart = null;
+    }
+  });
+  if (currentStart && data.length > 0) {
+    peakSegments.push({ start: currentStart, end: data[data.length - 1].time });
+  }
+
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
-        Cumulative Energy — Adaptive vs Baseline
-      </h3>
+    <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-5 space-y-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-200">
+            {metric === 'cost' ? 'Tariff Cost Parity (₹)' : 'Cumulative Energy (kWh)'} — Adaptive vs Baseline
+          </h3>
+          <div className="flex items-center gap-3 mt-1 text-xs font-medium">
+            {metric === 'cost' && costSavings > 0 && (
+              <span className="text-emerald-400 font-semibold">
+                Savings: ₹{costSavings.toFixed(2)} ({savingsPct.toFixed(1)}%)
+              </span>
+            )}
+            {peakKw > 0 && (
+              <span className="text-amber-400 font-semibold">
+                Rolling 15-min Peak: {peakKw.toFixed(2)} kW
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* View toggle */}
+        <div className="flex items-center gap-1 rounded-lg border border-slate-700/80 bg-[#080e1b] p-1">
+          <button
+            onClick={() => setMetric('cost')}
+            className={`rounded-md px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+              metric === 'cost'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Coins size={14} />
+            <span>Cost (₹)</span>
+          </button>
+          <button
+            onClick={() => setMetric('energy')}
+            className={`rounded-md px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+              metric === 'energy'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Zap size={14} />
+            <span>Energy (kWh)</span>
+          </button>
+        </div>
+      </div>
+
       {data.length < 2 ? (
-        <p className="text-slate-500 text-sm text-center py-10 font-medium">
+        <p className="text-slate-300 text-sm text-center py-12 font-medium">
           Awaiting simulation data...
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={data} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+        <ResponsiveContainer width="100%" height={210}>
+          <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+
+            {/* Shaded peak windows */}
+            {peakSegments.map((seg, idx) => (
+              <ReferenceArea
+                key={idx}
+                x1={seg.start}
+                x2={seg.end}
+                fill="#f43f5e"
+                fillOpacity={0.12}
+                stroke="#f43f5e"
+                strokeOpacity={0.3}
+              />
+            ))}
+
             <XAxis
-              dataKey="time" tick={{ fill: '#64748b', fontSize: 10 }}
-              axisLine={false} tickLine={false}
+              dataKey="time"
+              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
+              axisLine={false}
+              tickLine={false}
               interval={Math.max(1, Math.floor(data.length / 8))}
             />
             <YAxis
-              tick={{ fill: '#64748b', fontSize: 10 }}
-              axisLine={false} tickLine={false}
-              unit=" kWh"
+              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
+              axisLine={false}
+              tickLine={false}
+              unit={metric === 'cost' ? ' ₹' : ' kWh'}
             />
             <Tooltip
-              contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-              labelStyle={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}
-              itemStyle={{ color: '#f8fafc', fontSize: 13, fontWeight: 500 }}
+              contentStyle={{
+                background: '#0a101d',
+                border: '1px solid #1e293b',
+                borderRadius: 8,
+                boxShadow: '0 8px 16px -2px rgb(0 0 0 / 0.5)',
+              }}
+              labelStyle={{ color: '#cbd5e1', fontSize: 12, marginBottom: 4, fontWeight: 600 }}
+              itemStyle={{ color: '#ffffff', fontSize: 13, fontWeight: 600 }}
             />
-            <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8', paddingTop: 10 }} />
-            <Line
-              type="monotone"
-              dataKey="adaptive"
-              name="Adaptive (kWh)"
-              stroke="#22d3ee"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="baseline"
-              name="Baseline (kWh)"
-              stroke="#f87171"
-              strokeWidth={2}
-              strokeDasharray="5 3"
-              dot={false}
-              isAnimationActive={false}
-            />
+            <Legend wrapperStyle={{ fontSize: 11, color: '#cbd5e1', paddingTop: 6 }} />
+
+            {metric === 'cost' ? (
+              <>
+                <Line
+                  type="monotone"
+                  dataKey="adaptiveCost"
+                  name="Adaptive Cost (₹)"
+                  stroke="#38bdf8"
+                  strokeWidth={2.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="baselineCost"
+                  name="Baseline Cost (₹)"
+                  stroke="#f87171"
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </>
+            ) : (
+              <>
+                <Line
+                  type="monotone"
+                  dataKey="adaptiveEnergy"
+                  name="Adaptive Energy (kWh)"
+                  stroke="#22d3ee"
+                  strokeWidth={2.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="baselineEnergy"
+                  name="Baseline Energy (kWh)"
+                  stroke="#f87171"
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </>
+            )}
           </LineChart>
         </ResponsiveContainer>
       )}

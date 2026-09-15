@@ -20,6 +20,10 @@ COMFORT:
   PMV (Fanger) → PPD → comfort_score = 100 − PPD
   Replaces simple distance-from-ideal penalty model.
 
+IAQ (CO2):
+  Per-room CO2 mass balance — respiration generation vs. fresh-air supply.
+  iaq_score = 0–100 from CO2; overall_comfort_score = 0.7·comfort + 0.3·IAQ.
+
 STOCHASTIC WEATHER (optional):
   When use_stochastic_weather=True, Gaussian noise (σ=0.5°C) is added
   to the diurnal temperature each step.  Seed is fixed (42) for
@@ -36,14 +40,15 @@ STEP ORDER (deterministic, documented):
     2. Compute (T_air_new, T_mass_new, Q_HVAC) via 2R1C model
     3. Compute fan power
     4. Compute next humidity
-    5. Compute air speed from airflow
-    6. Compute PMV → comfort score
-    7. Compute energy increment (HVAC + fan)
-    8. Accumulate energy
+    5. Compute next CO2 → IAQ score
+    6. Compute air speed from airflow
+    7. Compute PMV → comfort score
+    8. Compute energy increment (HVAC + fan)
+    9. Accumulate energy
   Building-level:
-    9. Advance simulation_time_minutes
-   10. Step baseline twin in parallel
-   11. Snapshot → history (capped at MAX_HISTORY)
+   10. Advance simulation_time_minutes
+   11. Step baseline twin in parallel
+   12. Snapshot → history (capped at MAX_HISTORY)
 
 BASELINE:
   Runs on a SEPARATE BuildingTwin instance with the same initial state,
@@ -63,14 +68,21 @@ from .baseline import (
     get_diurnal_outside_temperature,
     get_scheduled_occupancy,
 )
-from .comfort_model import compute_comfort_score, compute_pmv
+from .comfort_model import (
+    compute_comfort_score,
+    compute_pmv,
+    iaq_score,
+    overall_comfort_score,
+)
 from .energy_model import compute_cost, compute_energy_increment
 from .thermal_model import (
+    CO2_INITIAL_PPM,
     RoomConfig,
     RoomState,
     airflow_to_air_speed,
     clamp_airflow,
     compute_fan_power,
+    compute_next_co2,
     compute_next_humidity,
     compute_next_temperature,
 )
@@ -92,6 +104,14 @@ ADJACENCY: Dict[str, List[str]] = {
     "B": ["A", "D"],
     "C": ["A", "D"],
     "D": ["B", "C"],
+}
+
+# Nominal room air volumes [m³] — SIMULATION ASSUMPTIONS (MASTER_PROMPT_3D §2.1).
+ROOM_VOLUMES_M3: Dict[str, float] = {
+    "A": 80.0,    # Conference
+    "B": 150.0,   # Engineering open-plan
+    "C": 60.0,    # Server / IT
+    "D": 100.0,   # Reception
 }
 
 # Initial conditions — SIMULATION ASSUMPTIONS (demo values, not real data).
@@ -133,7 +153,10 @@ _INITIAL_CONDITIONS: Dict[str, Dict[str, Any]] = {
 
 
 def _make_configs() -> Dict[str, RoomConfig]:
-    return {rid: RoomConfig(room_id=rid) for rid in "ABCD"}
+    return {
+        rid: RoomConfig(room_id=rid, nominal_volume_m3=ROOM_VOLUMES_M3[rid])
+        for rid in "ABCD"
+    }
 
 
 def _make_states(
@@ -156,6 +179,9 @@ def _make_states(
         pmv   = compute_pmv(t_air, t_mass, v_air, rh)
         score = compute_comfort_score(pmv)
 
+        # Initial IAQ from the initial CO2 concentration
+        iaq = iaq_score(CO2_INITIAL_PPM)
+
         states[rid] = RoomState(
             room_id            = rid,
             temperature_c      = t_air,
@@ -170,6 +196,9 @@ def _make_states(
             energy_kwh         = 0.0,
             comfort_score      = score,
             pmv                = pmv,
+            co2_ppm            = CO2_INITIAL_PPM,
+            iaq_score          = iaq,
+            overall_comfort_score = overall_comfort_score(score, iaq),
         )
     return states
 
@@ -214,6 +243,13 @@ class BuildingTwin:
 
         self.history:          deque[Dict[str, Any]] = deque(maxlen=MAX_HISTORY)
         self.baseline_history: deque[Dict[str, Any]] = deque(maxlen=MAX_HISTORY)
+
+        # ── P6 building state metrics ───────────────────────────────────────
+        self.cost_today: float = 0.0
+        self.baseline_cost_today: float = 0.0
+        self._recent_powers: deque[float] = deque(maxlen=3)  # rolling 15-min window
+        self.peak_kw_15min: float = 0.0
+        self.baseline_average_comfort: float = 0.0
 
         self._baseline_twin: Optional["BuildingTwin"] = None
         self._snapshot_and_record()
@@ -345,10 +381,11 @@ class BuildingTwin:
              b. Compute (T_air_new, T_mass_new, Q_HVAC) — 2R1C model
              c. Compute fan power
              d. Compute next humidity
-             e. Compute air speed from airflow
-             f. Compute PMV → comfort score
-             g. Compute energy increment (HVAC + fan power)
-             h. Accumulate energy, apply all state updates
+             e. Compute next CO2 → IAQ score
+             f. Compute air speed from airflow
+             g. Compute PMV → comfort score
+             h. Compute energy increment (HVAC + fan power)
+             i. Accumulate energy, apply all state updates
           4. Advance simulation_time_minutes
           5. Step baseline twin in parallel
           6. Snapshot → history
@@ -373,6 +410,8 @@ class BuildingTwin:
         # Collect OLD T_air values before any updates (explicit Euler — prevents
         # a room's new temperature from affecting its neighbor in the same step).
         old_air_temps = {rid: s.temperature_c for rid, s in self._states.items()}
+        step_energy_total: float = 0.0
+        step_power_total: float = 0.0
 
         for room_id, state in self._states.items():
             cfg = self._configs[room_id]
@@ -395,36 +434,64 @@ class BuildingTwin:
             # 3d. Humidity update
             new_humidity = compute_next_humidity(state, cfg)
 
-            # 3e. Air speed from airflow [m/s]
+            # 3e. CO2 mass balance → IAQ sub-score
+            new_co2 = compute_next_co2(
+                state.co2_ppm,
+                state.occupancy,
+                state.airflow_lps,
+                cfg.nominal_volume_m3,
+                self.step_minutes,
+            )
+            iaq = iaq_score(new_co2)
+
+            # 3f. Air speed from airflow [m/s]
             v_air = airflow_to_air_speed(state.airflow_lps, cfg)
 
-            # 3f. PMV (uses new T_air, new T_mass as radiant, current RH)
+            # 3g. PMV (uses new T_air, new T_mass as radiant, current RH)
             pmv   = compute_pmv(new_t_air, new_t_mass, v_air, new_humidity)
             score = compute_comfort_score(pmv)
 
-            # 3g. Energy increment: |HVAC power| + fan power [kWh]
+            # 3h. Energy increment: |HVAC power| + fan power [kWh]
             total_power = abs(hvac_power) + fan_power
             energy_inc  = compute_energy_increment(total_power, self.step_minutes)
+            step_energy_total += energy_inc
+            step_power_total  += total_power
 
-            # 3h. Apply all state updates atomically
-            state.temperature_c      = new_t_air
-            state.wall_temperature_c = new_t_mass
-            state.humidity_pct       = new_humidity
-            state.hvac_power_kw      = hvac_power
-            state.fan_power_kw       = fan_power
-            state.comfort_score      = score
-            state.pmv                = pmv
-            state.energy_kwh        += energy_inc
+            # 3i. Apply all state updates atomically
+            state.temperature_c         = new_t_air
+            state.wall_temperature_c    = new_t_mass
+            state.humidity_pct          = new_humidity
+            state.hvac_power_kw         = hvac_power
+            state.fan_power_kw          = fan_power
+            state.comfort_score         = score
+            state.pmv                   = pmv
+            state.co2_ppm               = new_co2
+            state.iaq_score             = iaq
+            state.overall_comfort_score = overall_comfort_score(score, iaq)
+            state.energy_kwh           += energy_inc
+
+        # P6: accumulate cost and 15-min rolling power
+        self.cost_today += step_energy_total * self.electricity_price_per_kwh
+        self._recent_powers.append(step_power_total)
+        self.peak_kw_15min = max(self._recent_powers) if self._recent_powers else step_power_total
 
         # ── Step 4: advance simulation clock ─────────────────────────
         self.simulation_time_minutes += self.step_minutes
 
         # ── Step 5: baseline twin ─────────────────────────────────────
         if self._baseline_twin is not None:
+            prev_base_energy = sum(s.energy_kwh for s in self._baseline_twin._states.values())
             for rid in self._baseline_twin._states:
                 sp = get_baseline_setpoint(self._baseline_twin.simulation_time_minutes)
                 self._baseline_twin._states[rid].setpoint_c = sp
             self._baseline_twin.step()
+            new_base_energy = sum(s.energy_kwh for s in self._baseline_twin._states.values())
+            base_energy_inc = max(0.0, new_base_energy - prev_base_energy)
+            self.baseline_cost_today += base_energy_inc * self.electricity_price_per_kwh
+            if self._baseline_twin._states:
+                self.baseline_average_comfort = sum(
+                    s.comfort_score for s in self._baseline_twin._states.values()
+                ) / len(self._baseline_twin._states)
 
         # ── Step 6: snapshot ──────────────────────────────────────────
         return self._snapshot_and_record()
@@ -436,6 +503,11 @@ class BuildingTwin:
         self._states = _make_states(configs=self._configs)
         self.history.clear()
         self.baseline_history.clear()
+        self.cost_today = 0.0
+        self.baseline_cost_today = 0.0
+        self._recent_powers.clear()
+        self.peak_kw_15min = 0.0
+        self.baseline_average_comfort = 0.0
         self._baseline_twin = self._create_baseline_twin()
         self._snapshot_and_record()
 
@@ -511,6 +583,9 @@ class BuildingTwin:
                 "energy_kwh":         round(state.energy_kwh,         4),
                 "comfort_score":      round(state.comfort_score,      1),
                 "pmv":                round(state.pmv,                3),
+                "co2_ppm":               round(state.co2_ppm,                1),
+                "iaq_score":             round(state.iaq_score,              1),
+                "overall_comfort_score": round(state.overall_comfort_score,  1),
             }
             total_energy += state.energy_kwh
             total_power  += total_power_kw
@@ -524,7 +599,7 @@ class BuildingTwin:
             for s in self._baseline_twin._states.values():
                 baseline_energy += s.energy_kwh
 
-        cost = compute_cost(total_energy, self.electricity_price_per_kwh)
+        cost = self.cost_today if self.cost_today > 0 else compute_cost(total_energy, self.electricity_price_per_kwh)
 
         return {
             "simulation_time_minutes":   self.simulation_time_minutes,
@@ -532,11 +607,16 @@ class BuildingTwin:
             "electricity_price_per_kwh": self.electricity_price_per_kwh,
             "rooms": rooms_data,
             "building": {
-                "total_energy_kwh":    round(total_energy,    4),
-                "baseline_energy_kwh": round(baseline_energy, 4),
-                "current_power_kw":    round(total_power,     3),
-                "average_comfort":     round(avg_comfort,     1),
-                "estimated_cost":      round(cost,            2),
+                "total_energy_kwh":         round(total_energy,    4),
+                "baseline_energy_kwh":      round(baseline_energy, 4),
+                "current_power_kw":         round(total_power,     3),
+                "average_comfort":          round(avg_comfort,     1),
+                "estimated_cost":           round(cost,            2),
+                "current_price":            round(self.electricity_price_per_kwh, 2),
+                "cost_today":               round(self.cost_today, 2),
+                "baseline_cost_today":      round(self.baseline_cost_today, 2),
+                "peak_kw_15min":            round(self.peak_kw_15min, 3),
+                "baseline_average_comfort": round(self.baseline_average_comfort, 1),
             },
         }
 
@@ -554,11 +634,17 @@ class BuildingTwin:
                     "energy_kwh":         data["energy_kwh"],
                     "hvac_power_kw":      data["hvac_power_kw"],
                     "humidity_pct":       data["humidity_pct"],
+                    "co2_ppm":            data["co2_ppm"],
                 }
                 for rid, data in snap["rooms"].items()
             },
-            "total_energy_kwh":    snap["building"]["total_energy_kwh"],
-            "baseline_energy_kwh": snap["building"]["baseline_energy_kwh"],
+            "total_energy_kwh":         snap["building"]["total_energy_kwh"],
+            "baseline_energy_kwh":      snap["building"]["baseline_energy_kwh"],
+            "cost":                     round(self.cost_today, 2),
+            "baseline_cost":            round(self.baseline_cost_today, 2),
+            "peak_kw_15min":            round(self.peak_kw_15min, 3),
+            "baseline_average_comfort": round(self.baseline_average_comfort, 1),
+            "electricity_price":        round(self.electricity_price_per_kwh, 2),
         }
         self.history.append(hist_point)
         return snap

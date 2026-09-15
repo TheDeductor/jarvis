@@ -12,7 +12,7 @@
 
 import React from 'react';
 import type { SimulationState, RoomId } from '../types';
-import { temperatureToColor, contrastColor } from '../utils/temperatureColor';
+import { temperatureToColor } from '../utils/temperatureColor';
 
 interface Props {
   state: SimulationState;
@@ -38,22 +38,6 @@ const ADJACENCY_ARROWS = [
 const W = 560; const H = 400;
 const COL_W = W / 2; const ROW_H = H / 2;
 const PAD = 10;
-
-function HvacBar({ power, maxPower }: { power: number; maxPower: number }) {
-  const pct = Math.min(1, Math.abs(power) / maxPower);
-  const bars = 10;
-  const filled = Math.round(pct * bars);
-  return (
-    <div className="flex gap-px mt-1">
-      {Array.from({ length: bars }).map((_, i) => (
-        <div
-          key={i}
-          className={`h-1.5 w-3 rounded-sm ${i < filled ? 'bg-cyan-400' : 'bg-white/20'}`}
-        />
-      ))}
-    </div>
-  );
-}
 
 export default function BuildingMap({ state, selectedRoom, onSelect }: Props) {
   const rooms = state.rooms;
@@ -143,42 +127,42 @@ export default function BuildingMap({ state, selectedRoom, onSelect }: Props) {
               />
 
               {/* Room label (top left) */}
-              <text x={x + 16} y={y + 28} fill="#94a3b8" fontSize={13} fontWeight="600" fontFamily="Inter, sans-serif" letterSpacing="1">
+              <text x={x + 16} y={y + 28} fill="#e2e8f0" fontSize={13} fontWeight="700" fontFamily="Inter, sans-serif" letterSpacing="1">
                 ZONE {rid}
               </text>
 
               {/* Center Temperature */}
-              <text x={x + rw / 2} y={y + rh / 2 + 8} textAnchor="middle" fill={fgColor} fontSize={40} fontWeight="700" fontFamily="Inter, sans-serif">
+              <text x={x + rw / 2} y={y + rh / 2 + 8} textAnchor="middle" fill={fgColor} fontSize={40} fontWeight="800" fontFamily="Inter, sans-serif">
                 {r.temperature_c.toFixed(1)}°
               </text>
-              <text x={x + rw / 2} y={y + rh / 2 + 28} textAnchor="middle" fill="#94a3b8" fontSize={12} fontFamily="Inter, sans-serif">
+              <text x={x + rw / 2} y={y + rh / 2 + 28} textAnchor="middle" fill="#cbd5e1" fontSize={12} fontWeight="600" fontFamily="Inter, sans-serif">
                 SP: {r.setpoint_c.toFixed(1)}°C
               </text>
 
               {/* Bottom stats row */}
-              <text x={x + 16} y={y + rh - 16} fill="#94a3b8" fontSize={11} fontFamily="Inter, sans-serif">
+              <text x={x + 16} y={y + rh - 16} fill="#cbd5e1" fontSize={11} fontWeight="500" fontFamily="Inter, sans-serif">
                 RH: {r.humidity_pct.toFixed(0)}%
               </text>
-              <text x={x + rw / 2} y={y + rh - 16} textAnchor="middle" fill="#94a3b8" fontSize={11} fontFamily="Inter, sans-serif">
+              <text x={x + rw / 2} y={y + rh - 16} textAnchor="middle" fill="#cbd5e1" fontSize={11} fontWeight="500" fontFamily="Inter, sans-serif">
                 Occ: {r.occupancy}
               </text>
-              <text x={x + rw - 16} y={y + rh - 16} textAnchor="end" fill={hvacPct > 0 ? hvacColor : '#94a3b8'} fontSize={11} fontFamily="Inter, sans-serif" fontWeight={hvacPct > 0 ? '600' : '400'}>
+              <text x={x + rw - 16} y={y + rh - 16} textAnchor="end" fill={hvacPct > 0 ? hvacColor : '#94a3b8'} fontSize={11} fontFamily="Inter, sans-serif" fontWeight={hvacPct > 0 ? '700' : '500'}>
                 {hvacPct > 0 ? (isCooling ? 'CLG ' : 'HTG ') : 'IDLE '}{hvacPct}%
               </text>
               
               {/* Active Constraint Overlay */}
               {r.active_constraint && (
-                <rect x={x} y={y} width={rw} height={20} fill="#f59e0b" fillOpacity={0.2} stroke="#f59e0b" strokeWidth={1} rx={6} />
-              )}
-              {r.active_constraint && (
-                <text x={x + rw / 2} y={y + 14} textAnchor="middle" fill="#fcd34d" fontSize={10} fontWeight="700" fontFamily="Inter, sans-serif" letterSpacing="0.5">
-                  ⚠️ {r.active_constraint}
-                </text>
+                <g>
+                  <rect x={x} y={y} width={rw} height={22} fill="#f59e0b" fillOpacity={0.25} stroke="#f59e0b" strokeWidth={1} rx={6} />
+                  <text x={x + rw / 2} y={y + 15} textAnchor="middle" fill="#fde047" fontSize={10} fontWeight="800" fontFamily="Inter, sans-serif" letterSpacing="0.5">
+                    [ACTIVE] {r.active_constraint.replace(/_/g, ' ')}
+                  </text>
+                </g>
               )}
 
               {/* Selection indicator */}
               {isSelected && (
-                <rect x={x} y={y} width={rw} height={rh} rx={6} fill="none" stroke="#38bdf8" strokeWidth={2} opacity={0.6} className="pointer-events-none" />
+                <rect x={x} y={y} width={rw} height={rh} rx={6} fill="none" stroke="#38bdf8" strokeWidth={2.5} opacity={0.8} className="pointer-events-none" />
               )}
             </g>
           );

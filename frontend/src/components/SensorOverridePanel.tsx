@@ -1,18 +1,9 @@
 // SensorOverridePanel.tsx  —  Manual hardware sensor override UI.
-//
-// Design intent:
-//   Each field shows the current simulated value as the default.
-//   User can edit any field and click "Push to Twin" to send real values.
-//   Fields left at their defaults are NOT sent — only edited fields are pushed.
-//   A "Simulated" badge shows when a field is in default mode.
-//   A "Sensor Active" badge shows when a real value is overriding that field.
-//
-// Future: replace manual input with a hardware bridge that calls the same API
-// automatically (MQTT, Modbus, BACnet, etc.).
 
 import React, { useState, useEffect } from 'react';
 import type { RoomState, SimulationState } from '../types';
 import { injectRoomSensorData, injectOutsideSensorData } from '../api';
+import { Radio, RotateCcw, Sliders, Thermometer, ArrowUpRight } from 'lucide-react';
 
 interface Props {
   room: RoomState;
@@ -35,20 +26,21 @@ function SensorField({
   return (
     <div className={`rounded-lg border transition-all duration-200 p-3 ${
       active
-        ? 'border-amber-500/40 bg-amber-500/5'
-        : 'border-white/5 bg-slate-900/30'
+        ? 'border-amber-500/50 bg-amber-500/10'
+        : 'border-slate-800 bg-[#080e1b]'
     }`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold text-slate-300">{label}</span>
+        <span className="text-xs font-semibold text-slate-200">{label}</span>
         <button
           onClick={() => onToggle(!active, defaultValue)}
-          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all flex items-center gap-1 ${
             active
-              ? 'border-amber-500/50 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
-              : 'border-slate-600 bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+              ? 'border-amber-500/50 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+              : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {active ? '⚡ Sensor Active' : '● Simulated'}
+          {active ? <Radio size={10} /> : <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />}
+          <span>{active ? 'Sensor Active' : 'Simulated'}</span>
         </button>
       </div>
       <div className="flex items-center gap-2">
@@ -62,14 +54,14 @@ function SensorField({
           onChange={(e) => onChange(e.target.value)}
           className={`flex-1 text-center rounded-lg px-2 py-1.5 text-sm font-mono border transition-all ${
             active
-              ? 'bg-slate-800 border-amber-500/40 text-amber-300 focus:outline-none focus:border-amber-400'
-              : 'bg-slate-900/50 border-slate-700/50 text-slate-500 cursor-not-allowed'
+              ? 'bg-[#0b1324] border-amber-500/50 text-amber-300 focus:outline-none focus:border-amber-400 font-bold'
+              : 'bg-[#050912] border-slate-800 text-slate-400 cursor-not-allowed'
           }`}
         />
-        <span className="text-xs text-slate-500 w-10 text-right">{unit}</span>
+        <span className="text-xs text-slate-300 w-10 text-right font-medium">{unit}</span>
       </div>
       {!active && (
-        <p className="text-[10px] text-slate-600 mt-1">
+        <p className="text-[11px] text-slate-400 mt-1">
           Simulated: {defaultValue.toFixed(step < 1 ? 2 : 0)} {unit}
         </p>
       )}
@@ -96,10 +88,10 @@ function OutsideSensorSection({
       const data: Record<string, number> = {};
       if (tempActive) data.temperature_c = parseFloat(tempVal);
       await injectOutsideSensorData(data);
-      setStatus(`✓ Pushed: ${Object.keys(data).join(', ')}`);
+      setStatus(`Pushed: ${Object.keys(data).join(', ')}`);
       setTimeout(onRefresh, 100);
     } catch {
-      setStatus('✗ Failed to push data.');
+      setStatus('Failed to push data.');
     } finally {
       setSending(false);
       setTimeout(() => setStatus(null), 3000);
@@ -107,12 +99,15 @@ function OutsideSensorSection({
   };
 
   return (
-    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-4 space-y-3">
+    <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
-          🌡️ Outside Environment
-        </h3>
-        <span className="text-[10px] text-slate-600">Weather Station</span>
+        <div className="flex items-center gap-1.5">
+          <Thermometer size={14} className="text-sky-400" />
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-200">
+            Outside Environment
+          </h3>
+        </div>
+        <span className="text-[11px] text-slate-300 font-medium">Weather Station</span>
       </div>
 
       <SensorField
@@ -129,17 +124,18 @@ function OutsideSensorSection({
         <button
           onClick={handlePush}
           disabled={sending || !tempActive}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
             tempActive
-              ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 hover:bg-amber-500/30'
-              : 'bg-slate-700/30 border border-slate-700/30 text-slate-600 cursor-not-allowed'
+              ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 active:scale-95'
+              : 'bg-slate-800/40 border border-slate-700/30 text-slate-400 cursor-not-allowed'
           }`}
         >
-          {sending ? 'Pushing…' : 'Push to Twin'}
+          <ArrowUpRight size={13} />
+          <span>{sending ? 'Pushing…' : 'Push to Twin'}</span>
         </button>
       </div>
       {status && (
-        <p className={`text-xs text-center font-medium ${status.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>
+        <p className={`text-xs text-center font-semibold ${status.startsWith('Pushed') ? 'text-emerald-400' : 'text-rose-400'}`}>
           {status}
         </p>
       )}
@@ -149,7 +145,6 @@ function OutsideSensorSection({
 
 // Room sensor override section
 export default function SensorOverridePanel({ room, state, onRefresh }: Props) {
-  // Track which fields are active (overriding simulation) + their draft values
   type FieldKey = 'temperature_c' | 'wall_temperature_c' | 'humidity_pct' | 'occupancy' | 'airflow_lps' | 'hvac_power_kw';
 
   const FIELDS: {
@@ -176,7 +171,6 @@ export default function SensorOverridePanel({ room, state, onRefresh }: Props) {
   const [status, setStatus]   = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  // When room changes, update inactive fields' display defaults
   useEffect(() => {
     setValues(prev => {
       const next = { ...prev };
@@ -206,10 +200,10 @@ export default function SensorOverridePanel({ room, state, onRefresh }: Props) {
         }
       });
       await injectRoomSensorData(room.room_id, data as any);
-      setStatus(`✓ Pushed ${Object.keys(data).length} field(s): ${Object.keys(data).join(', ')}`);
+      setStatus(`Pushed ${Object.keys(data).length} field(s): ${Object.keys(data).join(', ')}`);
       setTimeout(onRefresh, 100);
     } catch {
-      setStatus('✗ Failed. Is backend running?');
+      setStatus('Failed to push. Is backend running?');
     } finally {
       setSending(false);
       setTimeout(() => setStatus(null), 4000);
@@ -225,34 +219,38 @@ export default function SensorOverridePanel({ room, state, onRefresh }: Props) {
   return (
     <div className="space-y-4">
       {/* Room sensor panel */}
-      <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-4 space-y-3">
+      <div className="bg-[#0c1424] border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
-              ⚡ Sensor Override — Zone {room.room_id}
-            </h3>
-            <p className="text-[10px] text-slate-600 mt-0.5">
-              Toggle fields to replace simulated values with real sensor data
+            <div className="flex items-center gap-1.5">
+              <Sliders size={14} className="text-amber-400" />
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-200">
+                Sensor Override — Zone {room.room_id}
+              </h3>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Replace simulated physics values with live sensor feeds
             </p>
           </div>
           {activeCount > 0 && (
             <button
               onClick={handleReset}
-              className="text-[10px] text-slate-500 hover:text-slate-300 border border-slate-600 rounded px-2 py-1 transition-all"
+              className="text-[11px] font-semibold text-slate-300 hover:text-white border border-slate-700 rounded px-2.5 py-1 bg-slate-800 transition-all flex items-center gap-1"
             >
-              Reset All
+              <RotateCcw size={11} />
+              <span>Reset All</span>
             </button>
           )}
         </div>
 
         {/* Active sensor count badge */}
         <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full border ${
+          <div className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${
             activeCount > 0
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
-              : 'border-slate-700 bg-slate-800 text-slate-500'
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              : 'border-slate-800 bg-slate-900 text-slate-300'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-slate-600'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${activeCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
             {activeCount > 0 ? `${activeCount} sensor(s) active` : 'All simulated'}
           </div>
         </div>
@@ -277,18 +275,19 @@ export default function SensorOverridePanel({ room, state, onRefresh }: Props) {
         <button
           onClick={handlePush}
           disabled={sending || activeCount === 0}
-          className={`w-full py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+          className={`w-full py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
             activeCount > 0
-              ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 hover:bg-amber-500/30 active:scale-95'
-              : 'bg-slate-700/30 border border-slate-700/30 text-slate-600 cursor-not-allowed'
+              ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 active:scale-95'
+              : 'bg-slate-800/40 border border-slate-800 text-slate-400 cursor-not-allowed'
           }`}
         >
-          {sending ? '⟳ Pushing to Twin…' : `Push ${activeCount || 'No'} Sensor Override${activeCount !== 1 ? 's' : ''}`}
+          <ArrowUpRight size={14} />
+          <span>{sending ? 'Pushing to Twin…' : `Push ${activeCount || 'No'} Sensor Override${activeCount !== 1 ? 's' : ''}`}</span>
         </button>
 
         {status && (
-          <p className={`text-xs text-center font-medium py-1 rounded ${
-            status.startsWith('✓') ? 'text-emerald-400' : 'text-amber-400'
+          <p className={`text-xs text-center font-semibold py-1 rounded ${
+            status.startsWith('Pushed') ? 'text-emerald-400' : 'text-amber-400'
           }`}>
             {status}
           </p>

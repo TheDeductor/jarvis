@@ -2,11 +2,13 @@
 
 JARVIS is a comprehensive, simplified grey-box thermal digital twin simulator for a 4-room building environment. It provides a real-time platform to simulate thermal dynamics, energy consumption, and human comfort, alongside a reinforcement learning (RL) agent capable of autonomous HVAC control and a natural language processing (NLP) interface for user complaints.
 
-## UI Preview
+## 🖥️ UI Preview
 
 You can view the live frontend application here: [JARVIS HVAC Digital Twin](https://jarvis-hvac.netlify.app/)
 
-## System Architecture
+*(Note: Once you capture a screenshot of your deployed application, you can replace this section with the image by using `![UI Preview](./screenshot.png)`)*
+
+## 🏗️ System Architecture
 
 *(The following architecture and flowcharts are written in Mermaid.js syntax. When viewing this README on GitHub, GitLab, or in VS Code with a Markdown preview, these blocks will automatically render as accurate, non-hallucinated diagrams based directly on the code!)*
 
@@ -14,81 +16,35 @@ You can view the live frontend application here: [JARVIS HVAC Digital Twin](http
 The repository is modularized into four primary components:
 
 ```mermaid
-flowchart LR
-
-    %% =========================
-    %% FRONTEND
-    %% =========================
-    subgraph FE["Frontend"]
-        direction TB
-        UI["React + TypeScript<br/>Vite UI"]
+graph TD
+    subgraph Frontend
+        UI[React + TypeScript + Vite UI]
     end
 
-    %% =========================
-    %% BACKEND
-    %% =========================
-    subgraph BE["Backend"]
-        direction TB
-        API["FastAPI<br/>Application"]
-        NLP["Groq NLP<br/>Engine"]
+    subgraph Backend
+        API[FastAPI Application]
+        NLP[Groq NLP Engine]
     end
 
-    %% =========================
-    %% AI CONTROL
-    %% =========================
-    subgraph AI["AI Control"]
-        direction TB
-        RL["RL Agent<br/>Stable-Baselines3 PPO"]
+    subgraph Core Simulation
+        DT[Digital Twin Engine]
+        Thermal[Thermal Model]
+        Energy[Energy Model]
+        Comfort[Comfort Model]
     end
 
-    %% =========================
-    %% CORE SIMULATION
-    %% =========================
-    subgraph CORE["Core Simulation"]
-        direction TB
-        DT["Digital Twin<br/>Engine"]
-
-        subgraph MODELS[" "]
-            direction LR
-            Thermal["Thermal<br/>Model"]
-            Energy["Energy<br/>Model"]
-            Comfort["Comfort<br/>Model"]
-        end
+    subgraph AI Control
+        RL[RL Agent: Stable Baselines3 PPO]
     end
 
-    %% =========================
-    %% MAIN CONNECTIONS
-    %% =========================
-    UI <--> |"REST API"| API
-
-    API --> |"Natural Language<br/>Parsing"| NLP
-    API --> |"Policy<br/>Execution"| RL
-    API <--> |"State & Controls"| DT
-
+    UI <-->|REST API| API
+    API <-->|State & Controls| DT
+    API <-->|Natural Language Parsing| NLP
+    API <-->|Policy Execution| RL
+    
     DT --> Thermal
     DT --> Energy
     DT --> Comfort
-
-    %% =========================
-    %% LAYOUT HELPERS
-    %% =========================
-    NLP ~~~ RL
-    RL ~~~ DT
-
-    %% =========================
-    %% STYLING
-    %% =========================
-    classDef frontend fill:#1e293b,stroke:#60a5fa,stroke-width:2px,color:#ffffff
-    classDef backend fill:#1e293b,stroke:#a78bfa,stroke-width:2px,color:#ffffff
-    classDef ai fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#ffffff
-    classDef simulation fill:#1e293b,stroke:#34d399,stroke-width:2px,color:#ffffff
-    classDef model fill:#111827,stroke:#64748b,stroke-width:1.5px,color:#ffffff
-
-    class UI frontend
-    class API,NLP backend
-    class RL ai
-    class DT simulation
-    class Thermal,Energy,Comfort model
 ```
 
 ### 1. Digital Twin (`/digital_twin`)
@@ -133,7 +89,7 @@ A modern, responsive dashboard built with React, Vite, and Recharts.
 *   Provides manual control over HVAC parameters.
 *   Includes a chat interface to communicate with the NLP engine.
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 *   **Python 3.9+**
@@ -164,7 +120,7 @@ A modern, responsive dashboard built with React, Vite, and Recharts.
    npm run dev
    ```
 
-##Simulation Demo & Validation
+## 🧪 Simulation Demo & Validation
 
 To run standalone validation scenarios and generate plots for the Digital Twin physics:
 ```bash
@@ -172,7 +128,7 @@ python digital_twin/simulation_demo.py
 ```
 This runs 6 deterministic scenarios (Cooling, Heating, Disturbances) to validate thermal dynamics and bounds. (Requires `matplotlib` to generate plots in `digital_twin/plots/`).
 
-## Training the RL Agent
+## 🧠 Training the RL Agent
 To train a new PPO policy for the HVAC system:
 ```bash
 python -m rl.train --timesteps 1000000
