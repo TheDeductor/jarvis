@@ -51,6 +51,10 @@ export async function setAirflow(roomId: string, airflow_lps: number) {
   await api.post(`/rooms/${roomId}/airflow`, { airflow_lps });
 }
 
+export async function setHumiditySetpoint(roomId: string, humidity_target_pct: number) {
+  await api.post(`/rooms/${roomId}/humidity-setpoint`, { humidity_target_pct });
+}
+
 // ── Environment ───────────────────────────────────────────────────────────────
 
 export async function setOutsideTemperature(temperature_c: number) {

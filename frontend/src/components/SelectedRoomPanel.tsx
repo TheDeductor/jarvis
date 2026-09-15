@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { RoomState } from '../types';
-import { setSetpoint, setOccupancy, setAirflow } from '../api';
+import { setSetpoint, setOccupancy, setAirflow, setHumiditySetpoint } from '../api';
 
 interface Props {
   room: RoomState;
@@ -96,9 +96,23 @@ export default function SelectedRoomPanel({ room, onRefresh }: Props) {
         <Metric label="Air Temp" value={room.temperature_c.toFixed(2)} unit="°C" />
         <Metric label="Wall Temp" value={room.wall_temperature_c.toFixed(2)} unit="°C" />
         <Metric label="Setpoint" value={room.setpoint_c.toFixed(1)} unit="°C" />
-        <Metric label="Humidity" value={room.humidity_pct.toFixed(1)} unit="%" />
+        <div className="bg-[#080e1b] border border-slate-800/80 rounded-lg p-3">
+          <p className="text-[11px] font-semibold text-slate-300 uppercase tracking-wide mb-0.5">Humidity</p>
+          <p className={`text-base font-bold font-mono ${
+            room.humidity_status === 'comfortable' ? 'text-emerald-400' :
+            room.humidity_status === 'too_humid' ? 'text-amber-400' : 'text-sky-400'
+          }`}>
+            {(room.humidity_pct ?? 50).toFixed(1)}%
+            <span className="text-xs text-slate-300 ml-1.5 font-medium">
+              {room.humidity_status === 'comfortable' ? '✓ OK' :
+               room.humidity_status === 'too_humid' ? '↑ Humid' : '↓ Dry'}
+            </span>
+          </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Target: {(room.humidity_target_pct ?? 50).toFixed(0)}%</p>
+        </div>
         <Metric label="HVAC Power" value={room.hvac_power_kw.toFixed(2)} unit="kW" />
         <Metric label="Fan Power" value={room.fan_power_kw.toFixed(3)} unit="kW" />
+        <Metric label="Dehumid." value={(room.dehumidifier_power_kw ?? 0).toFixed(3)} unit="kW" />
         <Metric label="Energy" value={room.energy_kwh.toFixed(3)} unit="kWh" />
         <Metric label="Airflow" value={room.airflow_lps.toFixed(0)} unit="L/s" />
         <Metric label="Occupancy" value={room.occupancy.toString()} unit="pax" />
@@ -145,6 +159,12 @@ export default function SelectedRoomPanel({ room, onRefresh }: Props) {
           value={room.setpoint_c}
           unit="°C" step={0.5} min={16} max={30}
           onSet={(v) => act(() => setSetpoint(room.room_id, v))}
+        />
+        <ControlRow
+          label="Humidity"
+          value={room.humidity_target_pct ?? 50}
+          unit="%RH" step={5} min={30} max={70}
+          onSet={(v) => act(() => setHumiditySetpoint(room.room_id, v))}
         />
         <ControlRow
           label="Occupancy"

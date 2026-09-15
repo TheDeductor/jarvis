@@ -277,6 +277,15 @@ class BuildingTwin:
         clamped = float(np.clip(setpoint_c, 16.0, 30.0))
         self._states[room_id].setpoint_c = clamped
 
+    def set_humidity_setpoint(self, room_id: str, humidity_target_pct: float) -> None:
+        """
+        Change humidity target for a room.
+        Clamped to [30, 70]% — practical comfort range.
+        """
+        self._require_room(room_id)
+        clamped = float(np.clip(humidity_target_pct, 30.0, 70.0))
+        self._states[room_id].humidity_target_pct = clamped
+
     def set_occupancy(self, room_id: str, occupancy: int) -> None:
         self._require_room(room_id)
         self._states[room_id].occupancy = max(0, min(100, int(occupancy)))
@@ -451,8 +460,11 @@ class BuildingTwin:
             pmv   = compute_pmv(new_t_air, new_t_mass, v_air, new_humidity)
             score = compute_comfort_score(pmv)
 
-            # 3h. Energy increment: |HVAC power| + fan power [kWh]
-            total_power = abs(hvac_power) + fan_power
+            # 3h. Energy increment: |HVAC power| + fan power + dehumidifier [kWh]
+            # Dehumidifier power: proportional to how far RH is above target (capped at 1.5 kW)
+            rh_error = max(0.0, new_humidity - state.humidity_target_pct)
+            dehumidifier_power = min(rh_error * 0.05, 1.5)  # 0.05 kW per %RH above target, max 1.5 kW
+            total_power = abs(hvac_power) + fan_power + dehumidifier_power
             energy_inc  = compute_energy_increment(total_power, self.step_minutes)
             step_energy_total += energy_inc
             step_power_total  += total_power
@@ -463,6 +475,7 @@ class BuildingTwin:
             state.humidity_pct          = new_humidity
             state.hvac_power_kw         = hvac_power
             state.fan_power_kw          = fan_power
+            state.dehumidifier_power_kw = dehumidifier_power
             state.comfort_score         = score
             state.pmv                   = pmv
             state.co2_ppm               = new_co2
@@ -568,12 +581,21 @@ class BuildingTwin:
         comfort_sum   = 0.0
 
         for rid, state in self._states.items():
-            total_power_kw = abs(state.hvac_power_kw) + state.fan_power_kw
+            total_power_kw = abs(state.hvac_power_kw) + state.fan_power_kw + getattr(state, 'dehumidifier_power_kw', 0.0)
+            rh_status = "comfortable"
+            rh = state.humidity_pct
+            if rh > state.humidity_target_pct + 10:
+                rh_status = "too_humid"
+            elif rh < state.humidity_target_pct - 10:
+                rh_status = "too_dry"
             rooms_data[rid] = {
                 "room_id":            rid,
                 "temperature_c":      round(state.temperature_c,      3),
                 "wall_temperature_c": round(state.wall_temperature_c, 3),
                 "humidity_pct":       round(state.humidity_pct,       2),
+                "humidity_target_pct": round(state.humidity_target_pct, 1),
+                "humidity_status":    rh_status,
+                "dehumidifier_power_kw": round(getattr(state, 'dehumidifier_power_kw', 0.0), 3),
                 "setpoint_c":         round(state.setpoint_c,         1),
                 "airflow_lps":        round(state.airflow_lps,        1),
                 "occupancy":          state.occupancy,

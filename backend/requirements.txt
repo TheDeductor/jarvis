@@ -4,3 +4,5 @@ pydantic>=2.7.1
 numpy>=1.26.4
 groq>=1.0.0
 stable-baselines3>=2.3.0
+SQLAlchemy>=2.0.0
+aiosqlite>=0.20.0

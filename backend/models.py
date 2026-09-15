@@ -106,6 +106,16 @@ class RLModeRequest(BaseModel):
         description="Path to .zip policy file. Required when switching to 'auto'."
     )
 
+class UserFeedbackRequest(BaseModel):
+    message: str = Field(..., max_length=500)
+    
+class WeatherLocationRequest(BaseModel):
+    lat: float = Field(..., description="Latitude")
+    lon: float = Field(..., description="Longitude")
+
+class HumiditySetpointRequest(BaseModel):
+    humidity_target_pct: float = Field(..., ge=30.0, le=70.0, description="Target relative humidity [%]")
+
 class ChatMessageRequest(BaseModel):
     message: str = Field(..., description="The user's complaint text")
 

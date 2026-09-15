@@ -89,8 +89,14 @@ class JarvisAgent:
 
     def _build_obs(self, state: Dict[str, Any]) -> np.ndarray:
         """
-        Build the 23-float observation vector from a raw twin state dict.
+        Build the 40-float observation vector from a raw twin/manager state dict.
         Must exactly match BuildingEnv._get_obs().
+
+        Per-room (9 × 4 = 36):
+          temperature_c, humidity_pct, setpoint_c, occupancy, hvac_power_kw,
+          nlp_active, constraint_direction, urgency_encoded, target_delta
+        Global (4):
+          outside_temperature_c, electricity_price, time_sin, time_cos
         """
         def norm(val: float, lo: float, hi: float) -> float:
             clipped = max(lo, min(hi, float(val)))
@@ -106,8 +112,18 @@ class JarvisAgent:
             obs.append(norm(r["setpoint_c"],     16.0, 30.0))
             obs.append(norm(r["occupancy"],       0,   50))
             obs.append(norm(r["hvac_power_kw"], -10.0, 10.0))
+            # NLP signals — the live agent reads these from the state dict.
+            # SimulationManager stamps active_constraint on the room in get_state().
+            # We emit a minimal but compatible 4-signal block so obs shape == 40.
+            active = bool(r.get("active_constraint"))
+            obs.append(1.0 if active else -1.0)   # nlp_active
+            obs.append(0.0)                         # constraint_direction (unknown at inference)
+            obs.append(-1.0)                        # urgency_encoded (unknown at inference)
+            obs.append(-1.0)                        # target_delta    (unknown at inference)
 
         obs.append(norm(state["outside_temperature_c"], -10.0, 50.0))
+        price = state.get("electricity_price_per_kwh", state.get("current_price", 8.5))
+        obs.append(norm(price, 0.0, 20.0))
 
         time_mins  = state["simulation_time_minutes"]
         time_hours = (time_mins / 60.0) % 24.0

@@ -169,6 +169,7 @@ class RoomState:
 
     hvac_power_kw: float = 0.0   # [kW]  signed: negative=cooling, positive=heating
     fan_power_kw: float  = 0.0   # [kW]  always >= 0
+    dehumidifier_power_kw: float = 0.0  # [kW] active dehumidification draw
     energy_kwh: float    = 0.0   # [kWh] accumulated
     comfort_score: float = 95.0  # [0–100]  100 − PPD
     pmv: float           = 0.0   # [-3, +3] Fanger PMV

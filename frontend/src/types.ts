@@ -8,6 +8,9 @@ export interface RoomState {
   temperature_c: number;
   wall_temperature_c: number;  // 2R1C: structural mass temperature [°C]
   humidity_pct: number;
+  humidity_target_pct: number;   // target RH% for dehumidifier control
+  humidity_status: 'comfortable' | 'too_humid' | 'too_dry';  // comfort band
+  dehumidifier_power_kw: number; // active dehumidification power draw [kW]
   setpoint_c: number;
   airflow_lps: number;
   occupancy: number;

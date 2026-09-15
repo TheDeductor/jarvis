@@ -83,6 +83,29 @@ export default function App() {
     return () => clearInterval(id);
   }, [refreshHistory]);
 
+  // Request Geolocation and send to backend
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+          await fetch("http://127.0.0.1:8000/api/simulation/weather-location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              lat: position.coords.latitude,
+              lon: position.coords.longitude
+            })
+          });
+          console.log("Geolocation sent to backend for live weather updates.");
+        } catch (e) {
+          console.error("Failed to send geolocation to backend", e);
+        }
+      }, (error) => {
+        console.warn("Geolocation permission denied or error:", error.message);
+      });
+    }
+  }, []);
+
   const selectedRoomData = state.rooms[selectedRoom];
 
   return (

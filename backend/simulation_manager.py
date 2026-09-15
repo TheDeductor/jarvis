@@ -285,6 +285,11 @@ class SimulationManager:
         self._base_airflow:   Dict[str, float] = {}
         self._overlay_active: set[str] = set()
 
+        # ── DB Persistence Queues (Phase 1) ──────────────────────────────────
+        self.pending_db_writes: List[Dict[str, Any]] = []
+        self.pending_feedback_events: List[Dict[str, Any]] = []
+        self.pending_action_logs: List[Dict[str, Any]] = []
+
         # ── P6 TOU Tariff & Price Response ────────────────────────────────────
         self.tou_tariff = TouTariff()
         self._forced_peak: bool = False
@@ -410,6 +415,10 @@ class SimulationManager:
         with self._lock:
             self.twin.set_outside_temperature(temp_c)
 
+    def set_humidity_setpoint(self, room_id: str, humidity_target_pct: float) -> None:
+        with self._lock:
+            self.twin.set_humidity_setpoint(room_id, humidity_target_pct)
+
     def set_electricity_price(self, price: float) -> None:
         with self._lock:
             p = float(price)
@@ -532,6 +541,16 @@ class SimulationManager:
                 if cr is not None and cr.id == constraint_id:
                     return self._serialise_record(cr)
         return None
+
+    def record_nlp_feedback(self, room_id: str, raw_text: str, parsed_intent: str, applied_constraint: float) -> None:
+        """Queue an NLP feedback event to be persisted to the database."""
+        with self._lock:
+            self.pending_feedback_events.append({
+                "room_id": room_id,
+                "raw_text": raw_text,
+                "parsed_intent": parsed_intent,
+                "applied_constraint": applied_constraint,
+            })
 
     # ─────────────────────────
     # Internal helpers
@@ -840,8 +859,9 @@ class SimulationManager:
                     self.twin.set_airflow(room_id, self._base_airflow[room_id])
                     self._overlay_active.discard(room_id)
 
-        self.twin.step()
+        snap = self.twin.step()
         self._apply_iaq_rule()
+        self.pending_db_writes.append(snap)
 
     def _apply_overlays(
         self,
