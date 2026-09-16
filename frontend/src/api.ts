@@ -1,11 +1,19 @@
 // api.ts — All backend communication.  No physics logic lives here.
 
 import axios from 'axios';
-import type { HistoryPoint, SimulationState, TariffResponse, TariffSlot } from './types';
+import type { HistoryPoint, SimulationState, TariffResponse, TariffSlot, OccupantFeedbackCreate, OccupantFeedbackResponse } from './types';
 
-const BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
+const BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8001/api';
 
 const api = axios.create({ baseURL: BASE_URL, timeout: 5000 });
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token');
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 // ── Simulation state ──────────────────────────────────────────────────────────
 
@@ -17,6 +25,18 @@ export async function fetchState(): Promise<SimulationState> {
 export async function fetchHistory(): Promise<HistoryPoint[]> {
   const res = await api.get<{ history: HistoryPoint[] }>('/simulation/history');
   return res.data.history;
+}
+
+export async function login(username: string, password: string) {
+  const formData = new URLSearchParams();
+  formData.append('username', username);
+  formData.append('password', password);
+  const res = await api.post('/auth/token', formData, {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+  });
+  return res.data;
 }
 
 // ── Simulation control ────────────────────────────────────────────────────────
@@ -123,5 +143,10 @@ export async function setTariff(slots: TariffSlot[]): Promise<TariffResponse> {
 
 export async function forcePeak(): Promise<void> {
   await api.post('/environment/force-peak');
+}
+
+export async function submitOccupantFeedback(data: OccupantFeedbackCreate): Promise<OccupantFeedbackResponse> {
+  const res = await api.post<OccupantFeedbackResponse>('/occupant-feedback', data);
+  return res.data;
 }
 

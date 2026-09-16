@@ -149,3 +149,20 @@ export interface ChatMessage {
   action_taken?: string;
   error?: boolean;
 }
+
+export interface OccupantFeedbackCreate {
+  room_id: string;
+  requested_temp: number;
+  actual_temp: number;
+  humidity: number;
+  hvac_power: number;
+  is_comfortable: boolean;
+  comfort_rating: number;
+  reuse_preference: boolean;
+}
+
+export interface OccupantFeedbackResponse extends OccupantFeedbackCreate {
+  id: number;
+  user_id: string;
+  timestamp: string;
+}

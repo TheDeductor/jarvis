@@ -20,6 +20,8 @@ import EnergyChart from './components/EnergyChart';
 import ComfortChart from './components/ComfortChart';
 import NLPChatPanel from './components/NLPChatPanel';
 import DemoMacros from './components/DemoMacros';
+import LoginScreen from './components/LoginScreen';
+import OccupantView from './components/OccupantView';
 
 const POLL_INTERVAL_MS = 1000;
 const HISTORY_INTERVAL_MS = 2000;
@@ -49,6 +51,28 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'sensors'>('telemetry');
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
+  
+  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('access_token'));
+  const [userRole, setUserRole] = useState<string | null>(localStorage.getItem('user_role'));
+  const [userRoom, setUserRoom] = useState<string | null>(localStorage.getItem('user_room'));
+
+  const handleLogin = (token: string, role: string, room: string | null) => {
+    localStorage.setItem('access_token', token);
+    localStorage.setItem('user_role', role);
+    if (room) localStorage.setItem('user_room', room);
+    setAuthToken(token);
+    setUserRole(role);
+    setUserRoom(room);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_role');
+    localStorage.removeItem('user_room');
+    setAuthToken(null);
+    setUserRole(null);
+    setUserRoom(null);
+  };
 
   const refreshState = useCallback(async () => {
     try {
@@ -108,6 +132,37 @@ export default function App() {
 
   const selectedRoomData = state.rooms[selectedRoom];
 
+  if (!authToken) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  if (userRole === 'Occupant' && userRoom) {
+    return (
+      <div className="min-h-screen bg-[#070d18] text-slate-100 font-sans selection:bg-blue-500/30 flex flex-col">
+        <header className="border-b border-slate-800 bg-[#0c1424]/90 backdrop-blur-md px-6 py-4 flex items-center justify-between shadow-sm sticky top-0 z-40">
+          <div className="flex items-center gap-4">
+            <div className="w-1.5 h-8 bg-blue-500 rounded-full shadow-sm shadow-blue-500/50" />
+            <div>
+              <h1 className="text-lg font-bold text-white tracking-tight">
+                Digital Twin Simulation Engine
+              </h1>
+              <p className="text-xs text-slate-300 font-medium">
+                Occupant Portal
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase border-slate-500/40 bg-slate-500/15 text-slate-300 hover:bg-slate-500/30 transition-colors"
+          >
+            Logout
+          </button>
+        </header>
+        <OccupantView state={state} userRoom={userRoom} onRefresh={refreshState} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#070d18] text-slate-100 font-sans selection:bg-blue-500/30">
       {/* Header */}
@@ -141,6 +196,12 @@ export default function App() {
           <span className="text-xs text-slate-300 font-medium px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50">
             {state.running ? `T-Scale: ${state.speed}×` : 'T-Scale: —'}
           </span>
+          <button 
+            onClick={handleLogout}
+            className="text-xs font-bold px-3 py-1 rounded-md border tracking-wide uppercase border-slate-500/40 bg-slate-500/15 text-slate-300 hover:bg-slate-500/30 transition-colors"
+          >
+            Logout
+          </button>
         </div>
       </header>
 

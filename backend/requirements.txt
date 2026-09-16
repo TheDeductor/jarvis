@@ -6,3 +6,6 @@ groq>=1.0.0
 stable-baselines3>=2.3.0
 SQLAlchemy>=2.0.0
 aiosqlite>=0.20.0
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.9

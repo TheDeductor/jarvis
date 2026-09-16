@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Dict, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
 
 
 # ──────────────────────────────────────────────
@@ -161,6 +162,44 @@ class BuildingSummaryResponse(BaseModel):
     is_pre_peak: Optional[bool] = False
 
 
+class CarbonROIMetricsResponse(BaseModel):
+    current_energy_kwh: float
+    baseline_energy_kwh: float
+    energy_savings_kwh: float
+    
+    current_cost: float
+    baseline_cost: float
+    cost_savings: float
+    
+    current_carbon_kg: float
+    baseline_carbon_kg: float
+    carbon_savings_kg: float
+    
+    grid_intensity_kg_per_kwh: float = 0.82
+
+    @classmethod
+    def calculate(
+        cls, 
+        current_energy_kwh: float, 
+        baseline_energy_kwh: float, 
+        current_cost: float, 
+        baseline_cost: float, 
+        grid_intensity: float = 0.82
+    ) -> "CarbonROIMetricsResponse":
+        return cls(
+            current_energy_kwh=current_energy_kwh,
+            baseline_energy_kwh=baseline_energy_kwh,
+            energy_savings_kwh=baseline_energy_kwh - current_energy_kwh,
+            current_cost=current_cost,
+            baseline_cost=baseline_cost,
+            cost_savings=baseline_cost - current_cost,
+            current_carbon_kg=current_energy_kwh * grid_intensity,
+            baseline_carbon_kg=baseline_energy_kwh * grid_intensity,
+            carbon_savings_kg=(baseline_energy_kwh - current_energy_kwh) * grid_intensity,
+            grid_intensity_kg_per_kwh=grid_intensity
+        )
+
+
 class SimulationStateResponse(BaseModel):
     simulation_time_minutes: float
     running: bool
@@ -253,3 +292,18 @@ class TariffResponse(BaseModel):
     current_price: float
     is_peak: bool
     is_pre_peak: bool
+
+class OccupantFeedbackCreate(BaseModel):
+    room_id: str = Field(..., description="Room ID (e.g., A, B, C, D)")
+    requested_temp: float
+    actual_temp: float
+    humidity: float
+    hvac_power: float
+    is_comfortable: bool
+    comfort_rating: int = Field(..., ge=1, le=5)
+    reuse_preference: bool
+
+class OccupantFeedbackResponse(OccupantFeedbackCreate):
+    id: int
+    user_id: str
+    timestamp: datetime

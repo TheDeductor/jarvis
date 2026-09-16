@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean
+from sqlalchemy import Column, Integer, Float, String, DateTime, Boolean
+from sqlalchemy.orm import declarative_base
 from datetime import datetime, timezone
 from .database import Base
 
@@ -42,3 +43,27 @@ class RLActionLog(Base):
     room_id = Column(String, index=True)
     action_command = Column(String)
     reward_received = Column(Float)
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    role = Column(String)
+    assigned_room = Column(String, nullable=True)
+
+class OccupantFeedback(Base):
+    __tablename__ = "occupant_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    room_id = Column(String, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    requested_temp = Column(Float)
+    actual_temp = Column(Float)
+    humidity = Column(Float)
+    hvac_power = Column(Float)
+    is_comfortable = Column(Boolean)
+    comfort_rating = Column(Integer)
+    reuse_preference = Column(Boolean)

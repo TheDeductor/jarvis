@@ -39,11 +39,18 @@ const URGENCY_CONFIG: Record<string, any> = {
   low: { dot: 'bg-emerald-400', label: 'LOW', cls: 'text-emerald-400' },
 };
 
-const QUICK_COMPLAINTS = [
+const DASHBOARD_QUICK_COMPLAINTS = [
   "I'm freezing in Room A!",
   'Room B is way too hot',
   'Too much draft in Room C',
   'Room D feels stuffy',
+];
+
+const OCCUPANT_QUICK_COMPLAINTS = [
+  "I'm freezing!",
+  "It's way too hot",
+  'Too much draft',
+  'It feels stuffy',
 ];
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -130,9 +137,10 @@ function TypingIndicator() {
 
 interface Props {
   onRefresh: () => void;
+  contextRoom?: string;
 }
 
-export default function NLPChatPanel({ onRefresh }: Props) {
+export default function NLPChatPanel({ onRefresh, contextRoom }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: uid(),
@@ -167,8 +175,13 @@ export default function NLPChatPanel({ onRefresh }: Props) {
       setInput('');
       setLoading(true);
 
+      // Prefix with room context for the backend LLM if applicable
+      const backendComplaint = contextRoom 
+        ? `In Room ${contextRoom}: ${complaint}` 
+        : complaint;
+
       try {
-        const res = await submitFeedback(complaint);
+        const res = await submitFeedback(backendComplaint);
         const aiMsg: ChatMessage = {
           id: uid(),
           role: 'assistant',
@@ -276,7 +289,7 @@ export default function NLPChatPanel({ onRefresh }: Props) {
 
       {/* Quick complaint chips */}
       <div className="px-4 py-2 flex gap-2 flex-wrap border-t border-slate-800 shrink-0 bg-[#09101d]">
-        {QUICK_COMPLAINTS.map((q) => (
+        {(contextRoom ? OCCUPANT_QUICK_COMPLAINTS : DASHBOARD_QUICK_COMPLAINTS).map((q) => (
           <button
             key={q}
             id={`quick-complaint-${q.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()}`}

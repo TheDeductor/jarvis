@@ -30,14 +30,24 @@ except ImportError:
 import asyncio
 from fastapi import FastAPI, HTTPException, Path, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
+
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.ext.asyncio import AsyncSession
+from .auth import get_current_user, require_role, verify_password, create_access_token, get_db, ACCESS_TOKEN_EXPIRE_MINUTES
+from .db_models import User
+from sqlalchemy.future import select
+from datetime import timedelta
+
 from sqlalchemy import select
 
 from .database import init_db, AsyncSessionLocal
-from .db_models import RoomStateHistory, SystemStateHistory, NLPFeedbackEvent, RLActionLog
+from .db_models import RoomStateHistory, SystemStateHistory, NLPFeedbackEvent, RLActionLog, OccupantFeedback
 from .weather_service import fetch_current_weather
 
 from .models import (
     AirflowRequest,
+    CarbonROIMetricsResponse,
     ConstraintListResponse,
     ConstraintReactRequest,
     ElectricityPriceRequest,
@@ -55,6 +65,8 @@ from .models import (
     TariffResponse,
     WeatherLocationRequest,
     HumiditySetpointRequest,
+    OccupantFeedbackCreate,
+    OccupantFeedbackResponse,
 )
 from .simulation_manager import SimulationManager
 from .nlp_engine import parse_complaint
@@ -210,6 +222,24 @@ def _validate_room(room_id: str) -> None:
 # Health
 # ──────────────────────────────────────────────
 
+
+@app.post("/api/auth/token", tags=["auth"])
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+    stmt = select(User).where(User.username == form_data.username)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "room": user.assigned_room}
+
 @app.get("/api/health", tags=["system"])
 def health():
     return {"status": "ok", "simulation": "digital-twin-v0.2"}
@@ -254,18 +284,32 @@ async def get_db_history():
         return {"system_history": sys_records}
 
 
+@app.get("/api/analytics/carbon-roi", response_model=CarbonROIMetricsResponse, tags=["analytics"])
+def get_carbon_roi():
+    """Phase 7: Return real-time carbon emissions and ROI metrics."""
+    state = manager.get_state()
+    b = state["building"]
+    
+    return CarbonROIMetricsResponse.calculate(
+        current_energy_kwh=b["total_energy_kwh"],
+        baseline_energy_kwh=b["baseline_energy_kwh"],
+        current_cost=b["cost_today"],
+        baseline_cost=b["baseline_cost_today"]
+    )
+
+
 
 # ──────────────────────────────────────────────
 # Simulation control
 # ──────────────────────────────────────────────
 
-@app.post("/api/simulation/start", response_model=MessageResponse, tags=["simulation"])
+@app.post("/api/simulation/start", response_model=MessageResponse, tags=["simulation"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def start_simulation():
     manager.start()
     return MessageResponse(message="Simulation started.")
 
 
-@app.post("/api/simulation/pause", tags=["simulation"])
+@app.post("/api/simulation/pause", tags=["simulation"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def pause_simulation():
     """Pause the digital twin simulation."""
     manager.pause()
@@ -285,7 +329,7 @@ async def update_weather_location(loc: WeatherLocationRequest):
     
     return {"message": "Location updated successfully."}
 
-@app.post("/api/rooms/{room_id}/humidity-setpoint", tags=["rooms"])
+@app.post("/api/rooms/{room_id}/humidity-setpoint", tags=["rooms"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_humidity_setpoint(room_id: str = Path(...), body: HumiditySetpointRequest = None):
     """Set the humidity target for a specific room."""
     if room_id not in ROOM_IDS:
@@ -294,13 +338,13 @@ def set_humidity_setpoint(room_id: str = Path(...), body: HumiditySetpointReques
     return {"message": f"Humidity target for Room {room_id} set to {body.humidity_target_pct:.1f}%"}
 
 
-@app.post("/api/simulation/reset", response_model=MessageResponse, tags=["simulation"])
+@app.post("/api/simulation/reset", response_model=MessageResponse, tags=["simulation"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def reset_simulation():
     manager.reset()
     return MessageResponse(message="Simulation reset to initial conditions.")
 
 
-@app.post("/api/simulation/speed", response_model=MessageResponse, tags=["simulation"])
+@app.post("/api/simulation/speed", response_model=MessageResponse, tags=["simulation"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_speed(body: SimulationSpeedRequest):
     manager.set_speed(body.speed)
     return MessageResponse(message=f"Speed set to {body.speed}×.")
@@ -310,7 +354,7 @@ def set_speed(body: SimulationSpeedRequest):
 # Room controls
 # ──────────────────────────────────────────────
 
-@app.post("/api/rooms/{room_id}/setpoint", response_model=MessageResponse, tags=["rooms"])
+@app.post("/api/rooms/{room_id}/setpoint", response_model=MessageResponse, tags=["rooms"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_setpoint(
     room_id: str = Path(..., description="Room ID: A, B, C, or D"),
     body: SetpointRequest = ...,
@@ -320,7 +364,7 @@ def set_setpoint(
     return MessageResponse(message=f"Room {room_id.upper()} setpoint → {body.setpoint_c}°C.")
 
 
-@app.post("/api/rooms/{room_id}/occupancy", response_model=MessageResponse, tags=["rooms"])
+@app.post("/api/rooms/{room_id}/occupancy", response_model=MessageResponse, tags=["rooms"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_occupancy(
     room_id: str = Path(..., description="Room ID: A, B, C, or D"),
     body: OccupancyRequest = ...,
@@ -330,7 +374,7 @@ def set_occupancy(
     return MessageResponse(message=f"Room {room_id.upper()} occupancy → {body.occupancy}.")
 
 
-@app.post("/api/rooms/{room_id}/airflow", response_model=MessageResponse, tags=["rooms"])
+@app.post("/api/rooms/{room_id}/airflow", response_model=MessageResponse, tags=["rooms"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_airflow(
     room_id: str = Path(..., description="Room ID: A, B, C, or D"),
     body: AirflowRequest = ...,
@@ -340,7 +384,7 @@ def set_airflow(
     return MessageResponse(message=f"Room {room_id.upper()} airflow → {body.airflow_lps} L/s.")
 
 
-@app.post("/api/rooms/{room_id}/sensor-data", response_model=MessageResponse, tags=["hardware"])
+@app.post("/api/rooms/{room_id}/sensor-data", response_model=MessageResponse, tags=["hardware"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def inject_sensor_data(
     room_id: str = Path(..., description="Room ID: A, B, C, or D"),
     body: SensorDataRequest = ...,
@@ -370,39 +414,39 @@ def inject_sensor_data(
 # Environment
 # ──────────────────────────────────────────────
 
-@app.post("/api/environment/outside-temperature", response_model=MessageResponse, tags=["environment"])
+@app.post("/api/environment/outside-temperature", response_model=MessageResponse, tags=["environment"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_outside_temperature(body: OutsideTemperatureRequest):
     manager.set_outside_temperature(body.temperature_c)
     return MessageResponse(message=f"Outside temperature → {body.temperature_c}°C.")
 
 
-@app.post("/api/environment/electricity-price", response_model=MessageResponse, tags=["environment"])
+@app.post("/api/environment/electricity-price", response_model=MessageResponse, tags=["environment"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_electricity_price(body: ElectricityPriceRequest):
     manager.set_electricity_price(body.price_per_kwh)
     return MessageResponse(message=f"Electricity price → ₹{body.price_per_kwh}/kWh.")
 
 
-@app.get("/api/environment/tariff", response_model=TariffResponse, tags=["environment"])
+@app.get("/api/environment/tariff", response_model=TariffResponse, tags=["environment"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def get_tariff():
     """Return TOU tariff schedule and current pricing status."""
     return manager.get_tariff()
 
 
-@app.post("/api/environment/tariff", response_model=TariffResponse, tags=["environment"])
+@app.post("/api/environment/tariff", response_model=TariffResponse, tags=["environment"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_tariff(body: TariffRequest):
     """Update TOU tariff slots and recompute current rate."""
     slots_dicts = [s.model_dump() for s in body.slots]
     return manager.set_tariff_slots(slots_dicts)
 
 
-@app.post("/api/environment/force-peak", response_model=MessageResponse, tags=["environment"])
+@app.post("/api/environment/force-peak", response_model=MessageResponse, tags=["environment"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def force_peak():
     """Demo macro: Force peak pricing now (sets rate to ₹9.0/kWh, triggers price response overlay)."""
     manager.force_peak(True)
     return MessageResponse(message="Peak pricing forced active (₹9.0/kWh). Price response overlay engaged.")
 
 
-@app.post("/api/environment/sensor-data", response_model=MessageResponse, tags=["hardware"])
+@app.post("/api/environment/sensor-data", response_model=MessageResponse, tags=["hardware"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def inject_outside_sensor_data(body: OutsideSensorDataRequest):
     """
     Hardware sensor override for outdoor environment.
@@ -424,7 +468,7 @@ def inject_outside_sensor_data(body: OutsideSensorDataRequest):
 # RL Auto Mode
 # ──────────────────────────────────────────────
 
-@app.post("/api/rl/mode", response_model=MessageResponse, tags=["rl"])
+@app.post("/api/rl/mode", response_model=MessageResponse, tags=["rl"], dependencies=[Depends(require_role(["FacilityManager"]))])
 def set_rl_mode(body: RLModeRequest):
     """
     Switch the simulation between Manual and Auto (RL agent) control.
@@ -463,7 +507,7 @@ def get_rl_status():
 # NLP Chatbot
 # ──────────────────────────────────────────────
 
-@app.post("/api/chat/message", tags=["chat"])
+@app.post("/api/chat/message", tags=["chat"], dependencies=[Depends(require_role(["FacilityManager", "Occupant"]))])
 def chat_message(body: ChatMessageRequest):
     """
     Receives a natural language complaint, parses it using an LLM,
@@ -494,6 +538,28 @@ def chat_message(body: ChatMessageRequest):
         "action_taken": f"Constraint applied to Room {room_id}: {action}" if action != "none" and room_id else "No action taken.",
         "constraint": constraint
     }
+
+@app.post("/api/occupant-feedback", response_model=OccupantFeedbackResponse, tags=["occupant"], dependencies=[Depends(require_role(["Occupant"]))])
+async def submit_occupant_feedback(
+    body: OccupantFeedbackCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    feedback = OccupantFeedback(
+        user_id=current_user.username,
+        room_id=body.room_id,
+        requested_temp=body.requested_temp,
+        actual_temp=body.actual_temp,
+        humidity=body.humidity,
+        hvac_power=body.hvac_power,
+        is_comfortable=body.is_comfortable,
+        comfort_rating=body.comfort_rating,
+        reuse_preference=body.reuse_preference
+    )
+    db.add(feedback)
+    await db.commit()
+    await db.refresh(feedback)
+    return feedback
 
 
 # ── P5 — Constraint lifecycle endpoints ──────────────────────────────────────
@@ -539,7 +605,7 @@ async def react_to_constraint(
 
 # ── Phase 6 — RL Benchmark ───────────────────────────────────────────────────
 
-@app.get("/api/benchmark", tags=["analytics"])
+@app.get("/api/benchmark", tags=["analytics"], dependencies=[Depends(require_role(["FacilityManager"]))])
 async def get_benchmark(
     days: int = Query(default=30, ge=1, le=90),
     model: str = Query(default="rl/models/jarvis_final.zip"),
