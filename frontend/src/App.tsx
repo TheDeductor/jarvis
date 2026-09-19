@@ -4,18 +4,7 @@
 //          fetchHistory() is called every 2000ms.
 //          All displayed values come from these API calls — no local physics.
 
-import React, { useState, useEffect, useCallback, Component } from 'react';
-
-// Error boundary: catches 3D scene / WebGL crashes so the 2D dashboard survives
-class SceneBoundary extends Component<{ children: React.ReactNode }, { crashed: boolean }> {
-  constructor(props: any) { super(props); this.state = { crashed: false }; }
-  static getDerivedStateFromError() { return { crashed: true }; }
-  render() {
-    if (this.state.crashed)
-      return <div className="w-full h-64 flex items-center justify-center bg-slate-900/60 rounded-xl border border-slate-700 text-slate-400 text-sm">3D scene unavailable — switch to 2D Map</div>;
-    return this.props.children;
-  }
-}
+import React, { useState, useEffect, useCallback } from 'react';
 
 import type { SimulationState, HistoryPoint, RoomId } from './types';
 import { fetchState, fetchHistory } from './api';
@@ -62,7 +51,9 @@ export default function App() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'sensors'>('telemetry');
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
+  // Start in 2D if the stored token is the demo token (avoids a flash of 3D on first paint)
+  const storedToken = localStorage.getItem('access_token');
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>(storedToken === 'demo' ? '2d' : '3d');
 
   
   const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('access_token'));
@@ -94,9 +85,6 @@ export default function App() {
   };
 
   const isDemoMode = authToken === 'demo';
-
-  // In demo mode stay on safe 2D view — no GLTF loading that could crash
-  useEffect(() => { if (isDemoMode) setViewMode('2d'); }, [isDemoMode]);
 
   const refreshState = useCallback(async () => {
     if (isDemoMode) return;
@@ -281,13 +269,11 @@ export default function App() {
                   onSelect={setSelectedRoom}
                 />
               ) : (
-                <SceneBoundary>
                 <BuildingScene3D
                   state={state}
                   selectedRoom={selectedRoom}
                   onSelect={setSelectedRoom}
                 />
-                </SceneBoundary>
               )}
             </div>
             <DemoMacros state={state} onRefresh={refreshState} isDemoMode={isDemoMode} />
