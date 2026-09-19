@@ -1,136 +1,267 @@
-# JARVIS: HVAC Digital Twin & AI Control Simulator
+# JARVIS: HVAC Digital Twin and AI Control Simulator
 
-JARVIS is a comprehensive, simplified grey-box thermal digital twin simulator for a 4-room building environment. It provides a real-time platform to simulate thermal dynamics, energy consumption, and human comfort, alongside a reinforcement learning (RL) agent capable of autonomous HVAC control and a natural language processing (NLP) interface for user complaints.
+JARVIS is a real-time HVAC digital twin for a 4-room building environment. It simulates
+thermal dynamics, CO2/IAQ levels, energy cost, and occupant comfort, with an autonomous
+reinforcement learning controller, a natural language complaint parser, and an interactive
+3D visualization dashboard.
 
-## 🖥️ UI Preview
+Live deployment: [jarvis-hvac.netlify.app](https://jarvis-hvac.netlify.app/)
 
-You can view the live frontend application here: [JARVIS HVAC Digital Twin](https://jarvis-hvac.netlify.app/)
+---
 
-*(Note: Once you capture a screenshot of your deployed application, you can replace this section with the image by using `![UI Preview](./screenshot.png)`)*
-
-## 🏗️ System Architecture
-
-*(The following architecture and flowcharts are written in Mermaid.js syntax. When viewing this README on GitHub, GitLab, or in VS Code with a Markdown preview, these blocks will automatically render as accurate, non-hallucinated diagrams based directly on the code!)*
-
-
-The repository is modularized into four primary components:
+## System Architecture
 
 ```mermaid
 graph TD
     subgraph Frontend
-        UI[React + TypeScript + Vite UI]
+        UI[React + TypeScript + Vite]
+        Scene3D[3D Building Scene - React Three Fiber]
     end
 
     subgraph Backend
-        API[FastAPI Application]
+        API[FastAPI]
         NLP[Groq NLP Engine]
+        Constraints[Constraint Lifecycle Manager]
+        TOU[TOU Tariff and Price-Response Overlay]
     end
 
     subgraph Core Simulation
         DT[Digital Twin Engine]
-        Thermal[Thermal Model]
-        Energy[Energy Model]
-        Comfort[Comfort Model]
+        Thermal[Thermal Model - 2R1C]
+        IAQ[CO2 and IAQ Model]
+        Energy[Energy and Cost Model]
+        Comfort[Comfort Model - PMV/PPD]
+        Baseline[Baseline Twin]
     end
 
     subgraph AI Control
-        RL[RL Agent: Stable Baselines3 PPO]
+        RL[PPO Agent - Stable Baselines3]
     end
 
     UI <-->|REST API| API
-    API <-->|State & Controls| DT
+    Scene3D <-->|REST API| API
+    API <-->|State and Controls| DT
     API <-->|Natural Language Parsing| NLP
     API <-->|Policy Execution| RL
-    
+    API --> Constraints
+    API --> TOU
+
     DT --> Thermal
+    DT --> IAQ
     DT --> Energy
     DT --> Comfort
+    DT --> Baseline
 ```
 
-### 1. Digital Twin (`/digital_twin`)
-The core physics engine, written in pure Python. It simulates building dynamics deterministically without relying on external heavy tools like EnergyPlus.
-*   **Building Model**: Manages states of the 4 rooms and tracks total energy.
-*   **Thermal Model**: Computes temperature changes based on HVAC power, external weather, and internal occupancy loads.
-*   **Energy Model**: Tracks accumulated energy consumption (kWh) based on HVAC activity.
-*   **Comfort Model**: Calculates a comfort score based on temperature deviations from ideal setpoints.
+---
 
-```mermaid
-flowchart LR
-    Inputs((Inputs))
-    Inputs -->|Weather| Building[Building Engine]
-    Inputs -->|Occupancy| Building
-    Inputs -->|Setpoints/Airflow| Building
-    
-    Building --> Thermal[Thermal Equations]
-    Building --> Energy[Energy Tracking]
-    Building --> Comfort[Comfort Scoring]
-    
-    Thermal --> TempHum[Temperature & Humidity]
-    Energy --> Power[Power Consumption]
-    Comfort --> Score[Comfort Score]
-```
+## Features
 
-### 2. Backend (`/backend`)
-A FastAPI server acting as the bridge between the core simulation, the frontend UI, and external AI models.
-*   **Simulation Control**: Start, pause, reset, and adjust simulation speed.
-*   **Hardware Injection**: Endpoints to inject real sensor data, anchoring the digital twin to reality.
-*   **NLP Engine**: Uses the Groq LLM API to process natural language complaints (e.g., "It's too hot in room A1") and translate them into simulation constraints.
-*   **RL Mode Manager**: Toggles between manual UI control and autonomous RL policy control.
+### Digital Twin Physics (`/digital_twin`, `/backend`)
 
-### 3. Reinforcement Learning (`/rl`)
-Trains a Proximal Policy Optimization (PPO) agent to optimize HVAC controls.
-*   Balances two competing objectives: maximizing occupant comfort and minimizing energy consumption.
-*   Built using `stable-baselines3`.
-*   Includes training scripts, custom Gym environments, and policy evaluation tools.
+- **Thermal model**: 2R1C grey-box equations per room. Explicit Euler steps account for HVAC
+  power, neighbour room coupling, external weather, and occupancy heat loads.
+- **CO2/IAQ model**: Per-room mass-balance CO2 (`dC/dt`). `iaq_score` maps CO2 ppm to 0-100.
+  `overall_comfort_score = 0.7 * PMV_comfort + 0.3 * iaq_score`.
+- **Energy and cost model**: Accumulates kWh and INR cost per step under the active tariff rate.
+  Rolling 15-minute peak demand tracked alongside a parallel baseline twin for parity comparison.
+- **Comfort model**: Fanger PMV/PPD comfort scoring per room.
+- **Room layout**: 4 rooms in a 2x2 grid (A Conference, B Engineering, C Server, D Reception).
+  Adjacency: A-B, A-C, B-D, C-D.
 
-### 4. Frontend (`/frontend`)
-A modern, responsive dashboard built with React, Vite, and Recharts.
-*   Visualizes real-time room temperatures, setpoints, and comfort scores.
-*   Provides manual control over HVAC parameters.
-*   Includes a chat interface to communicate with the NLP engine.
+### Constraint Lifecycle
 
-## 🚀 Getting Started
+NLP complaints and IAQ rule violations create typed `ConstraintRecord` objects that go through a
+full lifecycle:
+
+- **active**: constraint applied as a setpoint/airflow delta overlay.
+- **resolved**: PMV or CO2 returned to acceptable range within the time window.
+- **renewed**: first failure triggers a 1.5x delta renewal.
+- **escalated**: second failure escalates and clears the constraint.
+
+Physics-derived deltas are used for thermal actions (based on current PMV magnitude). Expiry
+duration maps from urgency: high = 45 min, medium = 30 min, low = 20 min (simulated time).
+
+Endpoints: `GET /api/constraints`, `POST /api/constraints/{id}/react`.
+
+### Time-of-Use Tariff and Price-Response Overlay
+
+Default TOU schedule (INR/kWh):
+
+| Window | Rate |
+|--------|------|
+| 00:00 - 06:00 | 4.0 |
+| 06:00 - 14:00 | 6.0 |
+| 14:00 - 20:00 | 9.0 (peak) |
+| 20:00 - 24:00 | 6.0 |
+
+- **Pre-cool**: 60 minutes before peak, setpoint bias of -1.0 C applied.
+- **Peak relax**: during peak window for occupied rooms, setpoint relaxed by +1.5 C.
+- **Comfort guard**: bias is smoothly reduced to keep PMV within [-0.7, +0.7] at all times.
+
+Endpoints: `GET /api/environment/tariff`, `POST /api/environment/tariff`,
+`POST /api/environment/force-peak`.
+
+### NLP Complaint Parser
+
+`POST /api/chat/message` accepts free-text occupant complaints and routes them to the Groq LLM
+(configurable via `GROQ_MODEL` env var, default `llama-3.3-70b-versatile`). The engine resolves:
+
+- Thermal complaints (hot/cold) and airflow complaints (stuffy/drafty).
+- Room synonyms: "boardroom" -> A, "dev pit" -> B, "server room" -> C, "front lobby" -> D.
+- Explicit setpoint commands: "set room A to 23 C".
+- Sarcasm and multilingual input (Spanish, French, Hindi/Hinglish tested).
+- Out-of-scope non-HVAC complaints (furniture, noise, lighting, IT, pantry) are rejected with
+  `action: none`.
+
+Evaluation harness: `tools/nlp_eval.py` against 45 labeled cases in `docs/nlp_eval_cases.json`.
+Benchmark: 100% intent accuracy, 100% room accuracy, 100% out-of-scope rejection (live Groq run,
+45/45).
+
+### Reinforcement Learning (`/rl`)
+
+A PPO agent (`stable-baselines3`) trained to balance occupant comfort and energy efficiency.
+Toggle between manual control and autonomous RL policy via the dashboard or the API.
+
+Endpoint: `POST /api/simulation/rl-mode`.
+
+### 3D Visualization Dashboard (`/frontend`)
+
+Built with React 19, Vite, TypeScript, React Three Fiber, and Drei.
+
+- **3D building scene**: four room volumes in a 2x2 grid with real furniture models (Kenney CC0
+  kit) and animated occupant avatars (Quaternius CC-BY), toggled from the 2D floor-plan view.
+- **Live visual wiring**: room floor tint from temperature, CO2 haze volume, airflow particle
+  stream, constraint beacon (amber active / orange renewed / red escalated), ceiling vent glow
+  for TOU price-response.
+- **Click-to-select**: clicking a room in 3D synchronizes the dashboard selected room panel.
+- **Parity charts**: cumulative cost vs baseline cost, energy vs baseline, 15-minute peak demand,
+  and comfort parity over time.
+- **Demo macros**: Force Peak Price, Stuffy Room B, Heat Wave, Reset Defaults.
+- **NLP chat panel**: send complaints directly from the dashboard.
+
+---
+
+## Getting Started
 
 ### Prerequisites
-*   **Python 3.9+**
-*   **Node.js 18+**
+
+- Python 3.9+
+- Node.js 18+
+- A [Groq API key](https://console.groq.com/) for the NLP engine.
 
 ### Backend Setup
-1. Navigate to the root directory and install Python dependencies:
+
+1. Install Python dependencies from the project root:
    ```bash
    pip install -r backend/requirements.txt
    ```
-2. Set up your environment variables (create a `.env` file based on `.env.example` if applicable, ensuring you provide a `GROQ_API_KEY` for the NLP engine).
+
+2. Create a `.env` file (use `.env.example` as a template) and set your Groq API key:
+   ```
+   GROQ_API_KEY=your_key_here
+   ```
+
 3. Start the FastAPI server:
    ```bash
    uvicorn backend.main:app --reload
    ```
 
 ### Frontend Setup
-1. Navigate to the `frontend` directory:
+
+1. Navigate to the frontend directory:
    ```bash
    cd frontend
    ```
-2. Install dependencies:
+
+2. Install dependencies (include dev dependencies so the build tools are available):
    ```bash
-   npm install
+   npm install --include=dev
    ```
+
 3. Start the Vite development server:
    ```bash
    npm run dev
    ```
 
-## 🧪 Simulation Demo & Validation
+---
 
-To run standalone validation scenarios and generate plots for the Digital Twin physics:
+## Running Tests
+
+Backend unit tests (50 tests across IAQ, constraint lifecycle, and TOU price-response):
+
+```bash
+python -m pytest backend/tests -q
+```
+
+NLP evaluation harness (45 labeled cases, offline deterministic mode):
+
+```bash
+python tools/nlp_eval.py --mode mock
+```
+
+To run against the live Groq API (requires `GROQ_API_KEY` in `.env`):
+
+```bash
+python tools/nlp_eval.py --mode live
+```
+
+Digital twin physics validation (generates plots in `digital_twin/plots/`):
+
 ```bash
 python digital_twin/simulation_demo.py
 ```
-This runs 6 deterministic scenarios (Cooling, Heating, Disturbances) to validate thermal dynamics and bounds. (Requires `matplotlib` to generate plots in `digital_twin/plots/`).
 
-## 🧠 Training the RL Agent
-To train a new PPO policy for the HVAC system:
+---
+
+## Training the RL Agent
+
 ```bash
 python -m rl.train --timesteps 1000000
 ```
-This outputs a `.zip` model in the `rl/models/` directory, which can be loaded by the backend to run in Auto Mode.
+
+Outputs a `.zip` model to `rl/models/`. Load it from the dashboard or via
+`POST /api/simulation/rl-mode` with `{"mode": "auto", "model_path": "rl/models/..."}`.
+
+---
+
+## Project Structure
+
+```
+jarvis/
+├── backend/            FastAPI application, simulation manager, NLP engine
+│   ├── tests/          Unit tests (IAQ, constraints, TOU price-response)
+│   ├── digital_twin.py Building twin and snapshot logic
+│   ├── simulation_manager.py  Constraint lifecycle, overlays, TOU tariff
+│   ├── nlp_engine.py   Groq LLM complaint parser
+│   └── main.py         API routes
+├── digital_twin/       Standalone grey-box physics package
+├── docs/               NLP evaluation cases and report, phase documentation
+├── frontend/           React + R3F dashboard
+│   └── src/
+│       ├── components/ BuildingScene3D, charts, panels, demo macros
+│       └── App.tsx
+├── rl/                 PPO training pipeline and saved policies
+├── tools/              nlp_eval.py evaluation harness
+├── Dockerfile          Backend container (python:3.11-slim, CPU-only torch)
+└── netlify.toml        Frontend deployment config
+```
+
+---
+
+## Deployment
+
+- **Backend**: Docker container deployable to Render or Koyeb.
+  ```bash
+  docker build -t jarvis-backend .
+  docker run -p 8000:8000 -e GROQ_API_KEY=your_key jarvis-backend
+  ```
+- **Frontend**: Netlify (SPA fallback configured in `netlify.toml`). Set `VITE_API_URL` to your
+  backend URL.
+
+---
+
+## Asset Credits
+
+See [CREDITS.md](./CREDITS.md) for full attribution. Furniture models are Kenney (CC0). Occupant
+avatars are Quaternius characters from poly.pizza (CC-BY).
