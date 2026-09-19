@@ -18,19 +18,21 @@ import type { SimulationState, TariffSlot } from '../types';
 interface Props {
   state: SimulationState;
   onRefresh: () => void;
+  isDemoMode?: boolean;
 }
 
-export default function DemoMacros({ state, onRefresh }: Props) {
+export default function DemoMacros({ state, onRefresh, isDemoMode }: Props) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [slots, setSlots] = useState<TariffSlot[]>([]);
   const [showTariffEditor, setShowTariffEditor] = useState(false);
 
   useEffect(() => {
+    if (isDemoMode) return;
     fetchTariff()
       .then((data) => setSlots(data.slots))
       .catch((e) => console.warn('Failed to fetch tariff schedule:', e));
-  }, []);
+  }, [isDemoMode]);
 
   const runMacro = async (name: string, fn: () => Promise<void>, msg: string) => {
     setLoadingAction(name);
