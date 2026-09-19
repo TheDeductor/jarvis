@@ -84,28 +84,35 @@ export default function App() {
     setUserRoom(null);
   };
 
-  const isDemoMode = authToken === 'demo';
+  // Force demo mode if no auth token is present, since we bypassed login
+  const isDemoMode = authToken === 'demo' || !authToken;
+
+  // In demo mode stay on safe 2D view — no GLTF loading that could crash
+  useEffect(() => { if (isDemoMode) setViewMode('2d'); }, [isDemoMode]);
 
   const refreshState = useCallback(async () => {
     if (isDemoMode) return;
     try {
       const s = await fetchState();
-      setState(s);
+      // Guard against Netlify SPA returning index.html as a 200 OK string
+      if (!s || typeof s !== 'object' || !('rooms' in s)) throw new Error('Invalid API response');
+      setState(s as SimulationState);
       setBackendError(null);
       setConnected(true);
     } catch (e: any) {
       setBackendError('Cannot connect to backend. Is FastAPI running on port 8000?');
       setConnected(false);
     }
-  }, []);
+  }, [isDemoMode]);
 
   const refreshHistory = useCallback(async () => {
     if (isDemoMode) return;
     try {
       const h = await fetchHistory();
+      if (!Array.isArray(h)) throw new Error('Invalid API response');
       setHistory(h);
     } catch { /* silent */ }
-  }, []);
+  }, [isDemoMode]);
 
   // State poll
   useEffect(() => {
@@ -148,9 +155,10 @@ export default function App() {
 
   const selectedRoomData = state.rooms[selectedRoom];
 
-  if (!authToken) {
-    return <LoginScreen onLogin={handleLogin} onDemo={enterDemo} />;
-  }
+  // Temporarily bypass login screen so Netlify is always visible
+  // if (!authToken) {
+  //   return <LoginScreen onLogin={handleLogin} onDemo={enterDemo} />;
+  // }
 
   if (userRole === 'Occupant' && userRoom) {
     return (
