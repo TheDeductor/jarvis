@@ -3,9 +3,10 @@ import { login } from '../api';
 
 interface LoginScreenProps {
   onLogin: (token: string, role: string, room: string | null) => void;
+  onDemo: () => void;
 }
 
-export default function LoginScreen({ onLogin }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, onDemo }: LoginScreenProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,23 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>
         </form>
+
+        <div className="mt-4 pt-4 border-t border-slate-800">
+          <button
+            onClick={onDemo}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold py-3 px-4 rounded-lg transition-colors border border-slate-700"
+          >
+            Continue in Demo Mode
+          </button>
+          <p className="text-xs text-slate-500 text-center mt-2">
+            Demo mode uses static data. No backend required.
+          </p>
+        </div>
+
+        <div className="mt-4 bg-slate-900/60 rounded-lg p-3 border border-slate-800">
+          <p className="text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">Default credentials (live mode)</p>
+          <p className="text-xs text-slate-500">admin / admin123 &nbsp;·&nbsp; operator / op123</p>
+        </div>
       </div>
     </div>
   );

@@ -33,10 +33,10 @@ const DEFAULT_STATE: SimulationState = {
   outside_temperature_c: 34.0,
   electricity_price_per_kwh: 8.5,
   rooms: {
-    A: { room_id:'A', temperature_c:23, wall_temperature_c:23, humidity_pct:50, setpoint_c:22, airflow_lps:100, occupancy:8,  hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:95, pmv:0,   co2_ppm:450, iaq_score:100, overall_comfort_score:96.5 },
-    B: { room_id:'B', temperature_c:27, wall_temperature_c:27, humidity_pct:62, setpoint_c:24, airflow_lps:120, occupancy:12, hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:75, pmv:1,   co2_ppm:450, iaq_score:100, overall_comfort_score:82.5 },
-    C: { room_id:'C', temperature_c:22, wall_temperature_c:22, humidity_pct:48, setpoint_c:22, airflow_lps:90,  occupancy:4,  hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:95, pmv:0,   co2_ppm:450, iaq_score:100, overall_comfort_score:96.5 },
-    D: { room_id:'D', temperature_c:25, wall_temperature_c:25, humidity_pct:55, setpoint_c:23, airflow_lps:110, occupancy:10, hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:88, pmv:0.5, co2_ppm:450, iaq_score:100, overall_comfort_score:91.6 },
+    A: { room_id:'A', temperature_c:23, wall_temperature_c:23, humidity_pct:50, humidity_target_pct:50, humidity_status:'comfortable', dehumidifier_power_kw:0, setpoint_c:22, airflow_lps:100, occupancy:8,  hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:95, pmv:0,   co2_ppm:450, iaq_score:100, overall_comfort_score:96.5 },
+    B: { room_id:'B', temperature_c:27, wall_temperature_c:27, humidity_pct:62, humidity_target_pct:50, humidity_status:'comfortable', dehumidifier_power_kw:0, setpoint_c:24, airflow_lps:120, occupancy:12, hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:75, pmv:1,   co2_ppm:450, iaq_score:100, overall_comfort_score:82.5 },
+    C: { room_id:'C', temperature_c:22, wall_temperature_c:22, humidity_pct:48, humidity_target_pct:50, humidity_status:'comfortable', dehumidifier_power_kw:0, setpoint_c:22, airflow_lps:90,  occupancy:4,  hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:95, pmv:0,   co2_ppm:450, iaq_score:100, overall_comfort_score:96.5 },
+    D: { room_id:'D', temperature_c:25, wall_temperature_c:25, humidity_pct:55, humidity_target_pct:50, humidity_status:'comfortable', dehumidifier_power_kw:0, setpoint_c:23, airflow_lps:110, occupancy:10, hvac_power_kw:0, fan_power_kw:0, total_power_kw:0, energy_kwh:0, comfort_score:88, pmv:0.5, co2_ppm:450, iaq_score:100, overall_comfort_score:91.6 },
   },
   building: { total_energy_kwh:0, baseline_energy_kwh:0, current_power_kw:0, average_comfort:88, estimated_cost:0 },
   rl_mode: 'manual' as const,
@@ -74,7 +74,16 @@ export default function App() {
     setUserRoom(null);
   };
 
+  const enterDemo = () => {
+    setAuthToken('demo');
+    setUserRole('admin');
+    setUserRoom(null);
+  };
+
+  const isDemoMode = authToken === 'demo';
+
   const refreshState = useCallback(async () => {
+    if (isDemoMode) return;
     try {
       const s = await fetchState();
       setState(s);
@@ -87,6 +96,7 @@ export default function App() {
   }, []);
 
   const refreshHistory = useCallback(async () => {
+    if (isDemoMode) return;
     try {
       const h = await fetchHistory();
       setHistory(h);
@@ -109,10 +119,12 @@ export default function App() {
 
   // Request Geolocation and send to backend
   useEffect(() => {
+    if (isDemoMode) return;
+    const apiBase = (import.meta.env.VITE_API_URL as string) || 'http://127.0.0.1:8001/api';
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(async (position) => {
         try {
-          await fetch("http://127.0.0.1:8000/api/simulation/weather-location", {
+          await fetch(`${apiBase}/simulation/weather-location`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -128,12 +140,12 @@ export default function App() {
         console.warn("Geolocation permission denied or error:", error.message);
       });
     }
-  }, []);
+  }, [isDemoMode]);
 
   const selectedRoomData = state.rooms[selectedRoom];
 
   if (!authToken) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} onDemo={enterDemo} />;
   }
 
   if (userRole === 'Occupant' && userRoom) {
@@ -205,8 +217,16 @@ export default function App() {
         </div>
       </header>
 
+      {/* Demo mode banner */}
+      {isDemoMode && (
+        <div className="bg-amber-950/80 border-b border-amber-900/60 px-6 py-2 text-amber-200 text-xs font-semibold flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+          Demo Mode — showing static data. Connect a backend for live simulation.
+        </div>
+      )}
+
       {/* Error banner */}
-      {backendError && (
+      {backendError && !isDemoMode && (
         <div className="bg-rose-950/80 border-b border-rose-900/60 px-6 py-2.5 text-rose-200 text-sm font-medium flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> {backendError}
         </div>
